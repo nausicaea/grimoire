@@ -13,6 +13,13 @@ postgres = ['asyncpg']
 python = "^3.10"
 asyncpg = {version = "^0.27.0", optional = true}
 
+[tool.poetry.dev-dependencies]
+pytest = "^7"
+pytest-asyncio = "^0.19"
+pre-commit = "^2"
+black = "^22"
+isort = "^5"
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
