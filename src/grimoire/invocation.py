@@ -10,13 +10,14 @@ def start(coro: Callable[[], Coroutine]) -> Callable[[], None]:
     Use this to easily create an asynchronous main function, for example.
 
     >>> import asyncio
-    >>>
+    >>> from grimoire.invocation import start
     >>> @start
-    >>> async def main() -> None:
-    >>>   asyncio.sleep(1)
-    >>>   print('Hello, World')
-    >>>
+    ... async def main() -> None:
+    ...     await asyncio.sleep(1)
+    ...     print('Hello, World')
     >>> main()
+    Hello, World
+    >>>
     """
 
     @functools.wraps(coro)
