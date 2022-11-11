@@ -6,6 +6,9 @@ authors = ["Eleanor Young <developer@nausicaea.net>"]
 readme = "README.md"
 packages = [{include = "grimoire", from = "src"}]
 
+[tool.poetry.scripts]
+ansible-onepassword-client = 'grimoire.onepassword:main'
+
 [tool.poetry.extras]
 postgres = ['asyncpg']
 
