@@ -7,7 +7,7 @@ readme = "README.md"
 packages = [{include = "grimoire", from = "src"}]
 
 [tool.poetry.scripts]
-ansible-onepassword-client = 'grimoire.onepassword:main'
+ansible-onepassword-client = 'grimoire.bin.ansible_onepassword_client:main'
 
 [tool.poetry.extras]
 postgres = ['asyncpg']

@@ -1,6 +1,6 @@
 try:
     from asyncio import AbstractEventLoop
-    from collections.abc import AsyncGenerator, Sequence
+    from collections.abc import AsyncGenerator
     from contextlib import asynccontextmanager
     from typing import Literal, Type
 
@@ -35,21 +35,12 @@ try:
         are closed up even if something bad has happened in-between.
 
         >>> import asyncio
-        >>> import asyncio.subprocess
         >>> from grimoire.postgres import connect
         >>> async def main() -> None:
-        ...     p = await asyncio.subprocess.create_subprocess_exec(*['podman', 'container', 'run', '-d', '--rm', '-e', 'POSTGRES_HOST_AUTH_METHOD=trust', '-p', '5432:5432', 'docker.io/library/postgres:latest'], stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
-        ...     stdout, stderr = await p.communicate()
-        ...     if p.returncode != 0:
-        ...         raise RuntimeError(stderr)
-        ...     container_id: str = stdout.decode('utf-8').strip()
-        ...     await asyncio.sleep(10)
         ...     async with connect('postgres://postgres@[::1]:5432/postgres') as conn:
         ...         stmt = await conn.prepare('SELECT 1 + $1')
         ...         result = await stmt.fetchval(12)
         ...         print(result)
-        ...     p = await asyncio.subprocess.create_subprocess_exec(*['podman', 'container', 'stop', container_id])
-        ...     await p.wait()
         >>> asyncio.run(main())
         13
         """

@@ -1,27 +1,28 @@
-#!/usr/bin/env python3
-import argparse
 import asyncio.subprocess
 
-from grimoire.invocation import start
 
-
-async def recall(item_id: str, field: str) -> str:
+async def recall(item: str, field: str, vault: str | None = None) -> str:
     """
     Recall knowledge from the abyss by calling on the augurs of onepassword.
 
     >>> import asyncio
     >>> from grimoire.onepassword import recall
-    >>> asyncio.run(recall('Status', 'name'))
+    >>> asyncio.run(recall('Retrieval Marker', 'password', vault='Temporary Items'))
+    'q47h9HUmTdC2PBycx24znF2PHgpyYdJT'
     """
+    args = [
+        "op",
+        "item",
+        "get",
+        f"--fields=label={field}",
+        item,
+    ]
+
+    if vault is not None:
+        args.insert(3, f"--vault={vault}")
+
     p = await asyncio.subprocess.create_subprocess_exec(
-        *[
-            "op",
-            "item",
-            "get",
-            item_id,
-            "--fields",
-            f"label={field}",
-        ],
+        *args,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
@@ -32,36 +33,3 @@ async def recall(item_id: str, field: str) -> str:
         raise RuntimeError(stderr.decode("utf-8"))
 
     return stdout.decode("utf-8").strip()
-
-
-@start
-async def main() -> None:
-    """
-    Recall One Password vault items in a way that is compatible with Ansible Vault
-    """
-    parser = argparse.ArgumentParser(
-        description="Recall One Password vault items in a way that is compatible with Ansible Vault"
-    )
-    parser.add_argument(
-        "--vault-id",
-        type=str,
-        help="Supply the name or ID of the vault item in One Password. To Ansible, this identifier is known as the Ansible Vault ID.",
-    )
-    parser.add_argument(
-        "--field",
-        type=str,
-        default="credential",
-        help='Select the vault item field that is returned. Default: "credential"',
-    )
-    matches = parser.parse_args()
-
-    vault_id: str = matches.vault_id
-    field: str = matches.field
-
-    item_data = await recall(vault_id, field)
-
-    print(item_data)
-
-
-if __name__ == "__main__":
-    main()
