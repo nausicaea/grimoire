@@ -146,6 +146,27 @@ files = [
 ]
 
 [[package]]
+name = "mashumaro"
+version = "3.6"
+description = "Fast serialization library on top of dataclasses"
+category = "main"
+optional = false
+python-versions = ">=3.7"
+files = [
+    {file = "mashumaro-3.6-py3-none-any.whl", hash = "sha256:77403e3e2ecd0a7d0e22d472c08e33282460e48726eabe356c5163efbdf9c7ee"},
+    {file = "mashumaro-3.6.tar.gz", hash = "sha256:ceb3de53029219bbbb0385ca600b59348dcd14e0c68523986c6d51889ad338f5"},
+]
+
+[package.dependencies]
+typing-extensions = ">=4.1.0"
+
+[package.extras]
+msgpack = ["msgpack (>=0.5.6)"]
+orjson = ["orjson"]
+toml = ["tomli (>=1.1.0)", "tomli-w (>=1.0)"]
+yaml = ["pyyaml (>=3.13)"]
+
+[[package]]
 name = "nodeenv"
 version = "1.7.0"
 description = "Node.js virtual environment builder"
@@ -345,6 +366,18 @@ files = [
 ]
 
 [[package]]
+name = "typing-extensions"
+version = "4.5.0"
+description = "Backported and Experimental Type Hints for Python 3.7+"
+category = "main"
+optional = false
+python-versions = ">=3.7"
+files = [
+    {file = "typing_extensions-4.5.0-py3-none-any.whl", hash = "sha256:fb33085c39dd998ac16d1431ebc293a8b3eedd00fd4a32de0ff79002c19511b4"},
+    {file = "typing_extensions-4.5.0.tar.gz", hash = "sha256:5cb5f4a79139d699607b3ef622a1dedafa84e115ab0024e0d9c044a9479ca7cb"},
+]
+
+[[package]]
 name = "virtualenv"
 version = "20.21.0"
 description = "Virtual Python Environment builder"
@@ -371,4 +404,4 @@ postgres = ["asyncpg"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "3fae19385edf8829711b561912130083f3e44ea753ce9fb83ba7a1af038bb600"
+content-hash = "2f674dfc35ecf61ded8e1ea65315ce3634577e7b48efe6a2bdb73840c4a74df4"

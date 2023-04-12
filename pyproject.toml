@@ -11,10 +11,12 @@ ansible-onepassword-client = 'grimoire.bin.ansible_onepassword_client:main'
 
 [tool.poetry.extras]
 postgres = ['asyncpg']
+chronicler = ['mashumaro']
 
 [tool.poetry.dependencies]
 python = "^3.10"
 asyncpg = {version = "^0.27.0", optional = true}
+mashumaro = {version = "^3.6", optional = true}
 
 [tool.poetry.dev-dependencies]
 pytest = "^7"
