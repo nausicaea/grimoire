@@ -1,0 +1,29 @@
+name: grimoire
+services:
+  tailscale:
+    image: ghcr.io/tailscale/tailscale:stable@sha256:822bb08d50d803e583ed5e7346bc979f2c2347b3fb0aa87729ae6ec5d97dbe71
+    environment:
+      TS_USERSPACE: false
+      TS_STATEDIR: /var/lib/tailscale
+      TS_AUTHKEY: ${TS_AUTHKEY}
+      TS_EXTRA_ARGS: --exit-node ${TS_EXIT_NODE}
+    volumes:
+      - tailscale-state:/var/lib/tailscale
+    devices:
+      - /dev/net/tun
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    restart: unless-stopped
+
+  tor:
+    image: nausicaea/grimoire-tor:latest
+    build:
+      context: tor
+    network_mode: service:tailscale
+    depends_on:
+      - tailscale
+    restart: unless-stopped
+
+volumes:
+  tailscale-state: {}
