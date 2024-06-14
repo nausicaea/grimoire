@@ -9,7 +9,7 @@ RUN apk add --no-cache tor
 COPY --chown=root:root --chmod=0755 <<-"EOF" /usr/local/bin/tor-wrapper
     #!/bin/sh
     IP=$(/usr/bin/awk 'END{print $1}' /etc/hosts)
-    exec /usr/bin/tor --SocksPort "$IP:$TOR_SOCKS_PORT" --SocksPolicy "accept $IP/24, reject *" "$@"
+    exec /usr/bin/tor --SocksPort "$IP:$TOR_SOCKS_PORT" "$@" #--SocksPolicy "accept $IP/24, reject *" "$@"
 EOF
 WORKDIR /var/lib/tor
 USER tor

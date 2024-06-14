@@ -31,4 +31,4 @@ COPY --chown=root:root --chmod=0755 <<-"EOF" /usr/local/bin/proxychains
     exec /usr/local/bin/proxychains4 -f /tmp/proxychains4.conf "$@"
 EOF
 
-ENTRYPOINT ["/usr/local/bin/proxychains"]
+ENTRYPOINT ["/bin/sh", "/usr/local/bin/proxychains"]

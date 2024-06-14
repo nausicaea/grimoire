@@ -14,6 +14,9 @@ services:
     cap_add:
       - NET_ADMIN
       - SYS_MODULE
+    expose:
+      - 9050/tcp
+      - 9050/udp
     restart: unless-stopped
 
   tor:
@@ -24,6 +27,14 @@ services:
     depends_on:
       - tailscale
     restart: unless-stopped
+
+  proxychains4:
+    image: nausicaea/grimoire-proxychains4:latest
+    build:
+      context: proxychains4
+    depends_on:
+      - tor
+    
 
 volumes:
   tailscale-state: {}
