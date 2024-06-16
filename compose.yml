@@ -1,12 +1,31 @@
 name: grimoire
 services:
+  # tailscale:
+  #   image: ghcr.io/tailscale/tailscale:stable@sha256:822bb08d50d803e583ed5e7346bc979f2c2347b3fb0aa87729ae6ec5d97dbe71
+  #   environment:
+  #     TS_USERSPACE: false
+  #     TS_STATEDIR: /var/lib/tailscale
+  #     TS_AUTHKEY: ${TS_AUTHKEY}
+  #     TS_EXTRA_ARGS: --exit-node ${TS_EXIT_NODE}
+  #   volumes:
+  #     - tailscale-state:/var/lib/tailscale
+  #   devices:
+  #     - /dev/net/tun
+  #   networks:
+  #     - outside
+  #     - internal
+  #   cap_add:
+  #     - NET_ADMIN
+  #     - SYS_MODULE
+
   tor:
     image: nausicaea/grimoire-tor:latest
     build:
       context: tor
       args:
+        TOR_SOCKS_LISTEN_ADDR: 172.16.1.2
         TOR_SOCKS_PORT: 9050
-        TOR_SOCKS_POLICY: accept 172.28.5.0/25, accept 192.168.0.0/16
+        TOR_SOCKS_POLICY: accept 172.16.1.0/24, reject *
     networks:
       - outside
       - internal
@@ -23,4 +42,4 @@ networks:
     internal: true
     ipam:
       config:
-        - subnet: 172.28.5.0/24
+        - subnet: 172.16.1.0/24
