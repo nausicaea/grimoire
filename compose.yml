@@ -23,16 +23,26 @@ services:
     build:
       context: tor
       args:
-        TOR_SOCKS_LISTEN_ADDR: 172.16.1.2
+        TOR_INTERNAL_ALIAS: tor-internal
         TOR_SOCKS_PORT: 9050
-        TOR_SOCKS_POLICY: accept 172.16.1.0/24, reject *
     networks:
-      - outside
-      - internal
-    
-volumes:
-  tailscale-state: {}
+      outside: {}
+      internal:
+        aliases:
+          - tor-internal
 
+  mitmproxy:
+    image: nausicaea/grimoire-mitmproxy:latest
+    build:
+      context: mitmproxy
+    volumes:
+      - mitmproxy-data:/data
+    networks:
+      internal: {}
+
+volumes:
+  mitmproxy-data: {}
+    
 networks:
   outside:
     driver: bridge
