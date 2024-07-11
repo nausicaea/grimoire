@@ -17,6 +17,6 @@ for fqdn in (shuf "$TARGETS")
         continue
     end
 
-    set -l HTTP_STATUS (curl --user-agent "$UA" --proxy "$PROXY" -pIks -o /dev/null -w '%{http_code}' "https://$fqdn")
+    set -l HTTP_STATUS (curl --user-agent "$UA" --proxy "$PROXY" -pIks -m 10 -o /dev/null -w '%{http_code}' "https://$fqdn")
     printf '%s %s\n' $fqdn $HTTP_STATUS | tee -a $STATE_FILE
 end
