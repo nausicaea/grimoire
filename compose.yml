@@ -23,13 +23,13 @@ services:
     build:
       context: tor
       args:
-        TOR_INTERNAL_ALIAS: tor-internal
+        TOR_INTERNAL_ALIAS: tor-internal.docker
         TOR_SOCKS_PORT: 9050
     networks:
       outside: {}
       internal:
         aliases:
-          - tor-internal
+          - tor-internal.docker
 
   mitmproxy:
     image: nausicaea/grimoire-mitmproxy:latest
