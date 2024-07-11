@@ -18,7 +18,5 @@ for fqdn in (shuf "$TARGETS")
     end
 
     set -l HTTP_STATUS (curl --user-agent "$UA" --proxy "$PROXY" -pLIs -o /dev/null -w '%{http_code}' "http://$fqdn")
-    if test $status -eq 0
-        printf '%s %s\n' $fqdn $HTTP_STATUS | tee -a $STATE_FILE
-    end
+    printf '%s %s\n' $fqdn $HTTP_STATUS | tee -a $STATE_FILE
 end
