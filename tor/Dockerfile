@@ -12,7 +12,7 @@ RUN apk add --no-cache tor
 COPY --chown=root:root --chmod=0755 <<-"EOF" /usr/local/bin/torw
     #!/bin/sh
     set -xe
-    LISTEN_ADDR="$(nslookup -type=a ${TOR_INTERNAL_ALIAS} | grep -v "127.[0-9]\+.[0-9]\+.[0-9]\+" | awk '/Address:/{print $2}')"
+    LISTEN_ADDR="$(nslookup -type=a ${TOR_INTERNAL_ALIAS} | grep -o '[0-9]\+\.[0-9]\+\.[0-9]\+\.[0-9]\+' | grep -v '127.[0-9]\+.[0-9]\+.[0-9]\+')"
     exec /usr/bin/tor \
         --HTTPTunnelPort "${LISTEN_ADDR}:${TOR_HTTP_TUNNEL_PORT}" \
         --DNSPort "${LISTEN_ADDR}:${TOR_DNS_PORT}" \

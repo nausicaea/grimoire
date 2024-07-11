@@ -41,7 +41,8 @@ services:
       internal: {}
 
 volumes:
-  mitmproxy-data: {}
+  mitmproxy-data:
+    external: true
     
 networks:
   outside:
