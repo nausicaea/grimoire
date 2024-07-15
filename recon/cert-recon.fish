@@ -1,7 +1,9 @@
 #!/usr/bin/env fish
 
-argparse -N 1 -X 1 -- $argv; or return
+argparse -N 1 -X 1 'd/dns-server=' -- $argv; or return
 
+set -q _flag_d; or set -l _flag_d "172.16.1.2"
+set -l DNS_SERVER "$_flag_d"
 string match -q -g --regex \
     '^(?=.{1,253})(?!.*--.*)(?P<FQDN>(?:(?!-)(?![0-9])[a-zA-Z0-9-]{1,63}(?<!-)\.){1,}(?:(?!-)[a-zA-Z0-9-]{1,63}(?<!-)))$' "$argv[1]"; or return
 
@@ -16,4 +18,6 @@ WHERE
     --AND x509_notAfter(cai.CERTIFICATE) >= now() AT TIME ZONE 'UTC' \
 "
 
-exec psql -h crt.sh -U guest -w -d certwatch --csv -c $SQL_QUERY
+set -l CRT_SH_IP (nslookup -type=a 'crt.sh' | grep -o '[0-9]\+\.[0-9]\+\.[0-9]\+\.[0-9]\+' | grep -v '127.[0-9]\+.[0-9]\+.[0-9]\+')
+
+exec psql -h CRT_SH_IP -U guest -w -d certwatch --csv -c $SQL_QUERY
