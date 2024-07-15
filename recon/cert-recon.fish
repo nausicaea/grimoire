@@ -20,4 +20,4 @@ WHERE
 
 set -l CRT_SH_IP (nslookup -type=a 'crt.sh' | grep -o '[0-9]\+\.[0-9]\+\.[0-9]\+\.[0-9]\+' | grep -v '127.[0-9]\+.[0-9]\+.[0-9]\+')
 
-exec psql -h CRT_SH_IP -U guest -w -d certwatch --csv -c $SQL_QUERY
+exec psql -h $CRT_SH_IP -U guest -w -d certwatch --csv -c $SQL_QUERY
