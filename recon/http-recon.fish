@@ -12,18 +12,13 @@ set -l WORKING_DIRECTORY (pwd)
 set -l STATE_FILE (path normalize "$WORKING_DIRECTORY/http_recon_state")
 
 # Switch to a temporary directory
-set -l TEMP_DIR (mktemp -d)
-pushd $TEMP_DIR
+set -l TEMP_FILE (mktemp)
 
 # Build the cURL config
-printf 'user-agent = "%s"\nproxy = "%s"\nproxytunnel\nmax-time = 10\nhead\ninsecure\nsilent\nwrite-out = "%%output{>>%s}%%{response_code} %%{url}\\\\n"\n' $UA $PROXY $STATE_FILE > ./curl_config
+printf 'user-agent = "%s"\nproxy = "%s"\nproxytunnel\nparallel\nmax-time = 10\nhead\ninsecure\nsilent\nwrite-out = "%%output{>>%s}%%{response_code} %%{url}\\\\n"\n' $UA $PROXY $STATE_FILE > $TEMP_FILE
 for fqdn in (shuf $FQDNS)
-    printf 'url = http://%s\nurl = https://%s\n' $fqdn $fqdn >> ./curl_config
+    printf 'url = http://%s\nurl = https://%s\n' $fqdn $fqdn >> $TEMP_FILE
 end
 
 # Run cURL on the list
-curl --config ./curl_config > /dev/null
-
-# Return to the original directory
-popd
-
+exec curl --config $TEMP_FILE > /dev/null
