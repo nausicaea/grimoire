@@ -1,0 +1,16 @@
+[package]
+name = "cert-recon"
+description = "Queries certificate transparency logs for subdomains of a domain"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.86"
+clap = { version = "4.5.9", features = ["derive", "env"] }
+futures = "0.3.30"
+sqlx = { version = "0.7.4", features = ["runtime-tokio", "postgres", "tls-rustls"] }
+tokio = { version = "1.38.0", features = ["macros", "rt-multi-thread"] }
+grimoire = { path = "../grimoire" }
+tracing = "0.1.40"
+tracing-subscriber = { version = "0.3.18", features = ["fmt", "env-filter"] }
+log = "0.4.22"

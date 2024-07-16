@@ -1,0 +1,16 @@
+[package]
+name = "dns-recon"
+description = "Performs DNS A queries on FQNS supplied from Stdin"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.86"
+clap = { version = "4.5.9", features = ["derive", "env"] }
+futures = "0.3.30"
+grimoire = { path = "../grimoire" }
+hickory-resolver = "0.24.1"
+tokio = { version = "1.38.0", features = ["macros", "rt-multi-thread", "io-std"] }
+tokio-util = { version = "0.7.11", features = ["io", "codec"] }
+tracing = "0.1.40"
+tracing-subscriber = { version = "0.3.18", features = ["fmt", "env-filter"] }

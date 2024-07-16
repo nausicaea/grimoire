@@ -1,7 +1,7 @@
 name: grimoire
 services:
   tor:
-    image: nausicaea/grimoire-tor:latest
+    image: nausicaea/tor:latest
     build:
       context: tor
       args:
@@ -14,11 +14,31 @@ services:
           - tor-internal.docker
 
   mitmproxy:
-    image: nausicaea/grimoire-mitmproxy:latest
+    image: nausicaea/mitmproxy:latest
     build:
       context: mitmproxy
     volumes:
       - mitmproxy-data:/data
+    networks:
+      internal: {}
+
+  cert-recon:
+    image: nausicaea/cert-recon:latest
+    build:
+      context: .
+      args:
+        PACKAGE: cert-recon
+    networks:
+      outside: {}
+
+  dns-recon:
+    image: nausicaea/dns-recon:latest
+    build:
+      context: .
+      args:
+        PACKAGE: dns-recon
+    environment:
+      DNS_SERVER: tor-internal.docker
     networks:
       internal: {}
 

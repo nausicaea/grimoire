@@ -1,0 +1,21 @@
+[package]
+name = "http-recon"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.86"
+base64ct = "1.6.0"
+clap = { version = "4.5.9", features = ["derive"] }
+cookie = "0.18.1"
+futures = "0.3.30"
+grimoire = { path = "../grimoire" }
+itertools = "0.13.0"
+reqwest = { version = "0.12.5", features = ["socks"] }
+serde = "1.0.204"
+serde_json = "1.0.120"
+thiserror = "1.0.62"
+tokio = { version = "1.38.0", features = ["macros", "rt-multi-thread", "io-std"] }
+tokio-util = { version = "0.7.11", features = ["io", "codec"] }
+tracing = "0.1.40"
+tracing-subscriber = { version = "0.3.18", features = ["env-filter", "fmt"] }
