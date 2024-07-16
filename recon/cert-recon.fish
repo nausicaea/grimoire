@@ -18,6 +18,6 @@ WHERE
     --AND x509_notAfter(cai.CERTIFICATE) >= now() AT TIME ZONE 'UTC' \
 "
 
-set -l CRT_SH_IP (nslookup -type=a 'crt.sh' $DNS_SERVER | grep -o '[0-9]\+\.[0-9]\+\.[0-9]\+\.[0-9]\+' | grep -v '127.[0-9]\+.[0-9]\+.[0-9]\+')
+set -l CRT_SH_IP (nslookup -type=a 'crt.sh' $DNS_SERVER | grep -o '[0-9]\+\.[0-9]\+\.[0-9]\+\.[0-9]\+' | grep -v '127.[0-9]\+.[0-9]\+.[0-9]\+' | tail -n 1)
 
 exec psql --host=$CRT_SH_IP --username=guest -w --dbname=certwatch --csv --command=$SQL_QUERY
