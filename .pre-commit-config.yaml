@@ -1,0 +1,54 @@
+---
+fail_fast: true
+exclude: \.ply$
+repos:
+  - repo: local
+    hooks:
+      - id: cargo-nextest
+        name: Cargo Nextest
+        entry: cargo nextest run --profile ci --workspace
+        pass_filenames: false
+        language: system
+        types: [rust]
+        stages: [pre-commit]
+
+      - id: cargo-check
+        name: Cargo Check
+        entry: cargo check
+        pass_filenames: false
+        language: system
+        types: [rust]
+        stages: [pre-commit]
+
+      - id: cargo-clippy
+        name: Cargo Clippy (with warnings)
+        entry: cargo clippy --all-targets --all-features -- -D warnings
+        pass_filenames: false
+        language: system
+        types: [rust]
+        stages: [pre-commit]
+
+      - id: cargo-fmt-check
+        name: Cargo Format (check)
+        entry: cargo fmt -- --check
+        pass_filenames: false
+        language: system
+        types: [rust]
+        stages: [pre-commit]
+
+      - id: cargo-clippy-fix
+        name: Cargo Clippy
+        entry: cargo clippy --all-targets --all-features --fix -- -D warnings
+        pass_filenames: false
+        language: system
+        types: [rust]
+        stages: [pre-push]
+
+      - id: cargo-fmt
+        name: Cargo Format
+        entry: cargo fmt
+        pass_filenames: false
+        language: system
+        types: [rust]
+        stages: [pre-push]
+
