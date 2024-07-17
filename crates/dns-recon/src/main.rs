@@ -1,8 +1,5 @@
 use anyhow::anyhow;
-use std::{
-    net::{SocketAddr, ToSocketAddrs},
-    str::FromStr,
-};
+use std::{net::SocketAddr, str::FromStr};
 
 use clap::Parser;
 use futures::StreamExt;

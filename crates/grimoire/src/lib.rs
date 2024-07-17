@@ -1,8 +1,8 @@
 use std::{
-    cell::OnceCell,
     fmt::Display,
     net::{AddrParseError, IpAddr},
     str::FromStr,
+    sync::OnceLock,
 };
 
 use regex::Regex;
@@ -10,7 +10,7 @@ use thiserror::Error;
 use tracing::{debug, error, trace};
 
 const FQDN_RE_SRC: &str = r"^(?P<fqdn>(?:[a-zA-Z0-9-]{1,63}\.){1,}(?:[a-zA-Z0-9-]{1,63}))$";
-const FQDN_RE: OnceCell<Regex> = OnceCell::new();
+static FQDN_RE: OnceLock<Regex> = OnceLock::new();
 
 #[derive(Debug, Clone)]
 pub struct Fqdn(pub Vec<String>);
@@ -20,8 +20,7 @@ impl FromStr for Fqdn {
 
     #[tracing::instrument]
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let fqdn_re_binding = FQDN_RE;
-        let fqdn_re = fqdn_re_binding.get_or_init(|| {
+        let fqdn_re = FQDN_RE.get_or_init(|| {
             debug!("Compiling the FQDN regular expression");
             Regex::new(FQDN_RE_SRC).expect("compiling the FQDN_RE_SRC regular expression")
         });
@@ -44,7 +43,7 @@ impl FromStr for Fqdn {
         if fqdn.iter().any(|label| {
             label.ends_with('-')
                 || label.contains("--")
-                || label.starts_with(&['-', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'])
+                || label.starts_with(['-', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'])
         }) {
             error!("String contains illegal characters");
             return Err(ParseFqdnError);
