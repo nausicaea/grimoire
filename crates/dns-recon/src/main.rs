@@ -38,12 +38,29 @@ struct Args {
     /// If enabled, store the results in the recon database
     #[arg(short, long)]
     store_results: bool,
+    /// If enabled, run queries again even if the result is known. Ignored when results are not
+    /// stored in the recon database
+    query_known_results: bool,
     /// The port used by the DNS resolver to connect to the DNS server
     #[arg(short = 'p', long, env = "DNS_PORT", default_value_t = 53)]
     dns_port: u16,
     /// The IP address or fully qualified domain name of the DNS server
     #[arg(env = "DNS_SERVER")]
     dns_server: IpAddrOrFqdn,
+}
+
+#[tracing::instrument]
+async fn is_dns_recon_result_in_db(pg_pool: &PgPool, fqdn: &Fqdn) -> bool {
+    let recon_db_entry_count = query_scalar!(
+        r#"SELECT COUNT(*) FROM "dns-recon" WHERE "fqdn" = $1"#,
+        fqdn.to_string(),
+    )
+    .fetch_one(pg_pool)
+    .await
+    .map(|c| c.map(|c| c as usize).unwrap_or(0_usize))
+    .unwrap_or(0_usize);
+
+    recon_db_entry_count != 0
 }
 
 #[tracing::instrument]
@@ -142,8 +159,14 @@ async fn main() -> anyhow::Result<()> {
     let resolver = AsyncResolver::tokio(resolver_config, ResolverOpts::default());
 
     debug!("Performing the DNS query for the input");
-    while let Some(fqdn) = fqdn_stream.next().await {
+    'outer: while let Some(fqdn) = fqdn_stream.next().await {
         let fqdn = fqdn?;
+        if let Some(recon_pg_pool) = &recon_pg_pool {
+            if !args.query_known_results && is_dns_recon_result_in_db(recon_pg_pool, &fqdn).await {
+                continue 'outer;
+            }
+        }
+
         if let Ok(lookup_ip) = resolver.lookup_ip(format!("{}.", &fqdn)).await {
             let ips: Vec<_> = lookup_ip.iter().collect();
 
