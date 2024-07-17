@@ -6,11 +6,39 @@ use std::{
 };
 
 use regex::Regex;
+use sqlx::{
+    migrate::Migrator,
+    postgres::{PgConnectOptions, PgPoolOptions},
+};
 use thiserror::Error;
 use tracing::{debug, error, trace};
 
 const FQDN_RE_SRC: &str = r"^(?P<fqdn>(?:[a-zA-Z0-9-]{1,63}\.){1,}(?:[a-zA-Z0-9-]{1,63}))$";
 static FQDN_RE: OnceLock<Regex> = OnceLock::new();
+static MIGRATOR: Migrator = sqlx::migrate!("../../migrations");
+
+#[tracing::instrument]
+pub async fn create_recon_db_pool(
+    host: &str,
+    username: &str,
+    password: Option<&str>,
+    database: &str,
+) -> Result<sqlx::postgres::PgPool, sqlx::migrate::MigrateError> {
+    let recon_pg_connect_ops = if let Some(recon_db_password) = password {
+        PgConnectOptions::new().password(recon_db_password)
+    } else {
+        PgConnectOptions::new()
+    }
+    .host(host)
+    .username(username)
+    .database(database);
+
+    let recon_pg_pool = PgPoolOptions::new().connect_lazy_with(recon_pg_connect_ops);
+
+    MIGRATOR.run(&recon_pg_pool).await?;
+
+    Ok(recon_pg_pool)
+}
 
 #[derive(Debug, Clone)]
 pub struct Fqdn(pub Vec<String>);

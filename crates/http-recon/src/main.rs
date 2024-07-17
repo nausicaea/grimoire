@@ -9,18 +9,34 @@ use std::{
 use clap::Parser;
 use cookie::Cookie;
 use futures::StreamExt;
-use grimoire::{Fqdn, ParseFqdnError};
+use grimoire::{create_recon_db_pool, Fqdn, ParseFqdnError};
 use itertools::Itertools;
-use reqwest::{header::HeaderMap, redirect::Policy, ClientBuilder, Proxy};
+use reqwest::{header::HeaderMap, redirect::Policy, ClientBuilder, Proxy, Url};
+use sqlx::{query, query_scalar, PgPool};
 use thiserror::Error;
 use tokio_util::codec::{LinesCodec, LinesCodecError};
-use tracing::{debug, error};
+use tracing::{debug, error, info};
 use tracing_subscriber::EnvFilter;
 
 const MAX_HEADER_BUFFER_SIZE: usize = 1024 * 64;
 
 #[derive(Debug, Parser)]
 struct Args {
+    /// The IPv4 or IPv6 address or the host name of the recon database service
+    #[arg(long, default_value = "localhost", env = "RECON_DB_HOST")]
+    recon_db_host: String,
+    /// The username used for authenticating with the recon database service
+    #[arg(long, default_value = "recon", env = "RECON_DB_USERNAME")]
+    recon_db_username: String,
+    /// The password used for authenticating with the recon database service
+    #[arg(long, env = "RECON_DB_PASSWORD")]
+    recon_db_password: Option<String>,
+    /// The database to connect to when using the recon database service
+    #[arg(long, default_value = "recon", env = "RECON_DB_DATABASE")]
+    recon_db_database: String,
+    /// If enabled, store the results in the recon database
+    #[arg(short, long)]
+    store_results: bool,
     #[arg(short, long, env = "PROXY")]
     proxy: Option<String>,
     #[arg(
@@ -36,10 +52,83 @@ struct Args {
     accept_invalid_certs: bool,
 }
 
-#[derive(Debug)]
-struct AnonymizedHttpHeader(HashMap<String, Vec<String>>);
+async fn submit_http_recon_results(
+    pg_pool: &PgPool,
+    fqdn: &Fqdn,
+    url: &Url,
+    response_status: u16,
+    headers: &AnonymizedHttpHeaders,
+) -> anyhow::Result<()> {
+    let fqdn = fqdn.to_string();
 
-impl<'a> From<&'a HeaderMap> for AnonymizedHttpHeader {
+    let recon_db_entry_count = query_scalar!(
+        r#"SELECT COUNT(*) FROM "http-recon" WHERE "fqdn" = $1"#,
+        &fqdn
+    )
+    .fetch_one(pg_pool)
+    .await?
+    .map(|c| c as usize)
+    .unwrap_or(0_usize);
+
+    if recon_db_entry_count > 0 {
+        info!("'{fqdn}' already exists in the recon database");
+        return Ok(());
+    }
+
+    query!(
+        r#"INSERT INTO "http-recon" VALUES (DEFAULT, $1, $2, $3, $4)"#,
+        &fqdn,
+        url.to_string(),
+        response_status as i32,
+        serde_json::to_value(headers)?,
+    )
+    .execute(pg_pool)
+    .await?;
+
+    Ok(())
+}
+
+async fn submit_https_recon_results(
+    pg_pool: &PgPool,
+    fqdn: &Fqdn,
+    url: &Url,
+    response_status: u16,
+    headers: &AnonymizedHttpHeaders,
+) -> anyhow::Result<()> {
+    let fqdn = fqdn.to_string();
+
+    let recon_db_entry_count = query_scalar!(
+        r#"SELECT COUNT(*) FROM "https-recon" WHERE "fqdn" = $1"#,
+        &fqdn
+    )
+    .fetch_one(pg_pool)
+    .await?
+    .map(|c| c as usize)
+    .unwrap_or(0_usize);
+
+    if recon_db_entry_count > 0 {
+        info!("'{fqdn}' already exists in the recon database");
+        return Ok(());
+    }
+
+    query!(
+        r#"INSERT INTO "https-recon" VALUES (DEFAULT, $1, $2, $3, $4)"#,
+        &fqdn,
+        url.to_string(),
+        response_status as i32,
+        serde_json::to_value(headers)?,
+    )
+    .execute(pg_pool)
+    .await?;
+
+    Ok(())
+}
+
+#[derive(Debug, serde::Serialize)]
+#[serde(transparent)]
+struct AnonymizedHttpHeaders(HashMap<String, Vec<String>>);
+
+impl<'a> From<&'a HeaderMap> for AnonymizedHttpHeaders {
     fn from(value: &'a HeaderMap) -> Self {
         let mut map = HashMap::default();
         let groups = value.iter().chunk_by(|(header, _)| *header);
@@ -66,10 +155,10 @@ impl<'a> From<&'a HeaderMap> for AnonymizedHttpHeader {
     }
 }
 
-impl Display for AnonymizedHttpHeader {
+impl Display for AnonymizedHttpHeaders {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut output_buf = [0_u8; MAX_HEADER_BUFFER_SIZE];
-        let map_str = serde_json::to_string(&self.0).map_err(|e| {
+        let map_str = serde_json::to_string(&self).map_err(|e| {
             error!("serializing the header map to JSON: {}", e);
             std::fmt::Error
         })?;
@@ -117,6 +206,21 @@ async fn main() -> anyhow::Result<()> {
     debug!("Parsing command line arguments");
     let args = Args::parse();
 
+    let recon_pg_pool = if args.store_results {
+        debug!("Establishing a connection to the recon database");
+        Some(
+            create_recon_db_pool(
+                &args.recon_db_host,
+                &args.recon_db_username,
+                args.recon_db_password.as_deref(),
+                &args.recon_db_database,
+            )
+            .await?,
+        )
+    } else {
+        None
+    };
+
     debug!("Creating a stream from Stdin, decoded as lines, and parsed as pairs FQDNs and IPs");
     let mut target_stream =
         tokio_util::codec::FramedRead::new(tokio::io::stdin(), LinesCodec::new()).map(
@@ -146,29 +250,54 @@ async fn main() -> anyhow::Result<()> {
     .build()?;
 
     while let Some(target) = target_stream.next().await {
-        let (target_fqdn, target_ip) = target?;
-        let target_fqdn = target_fqdn.to_string();
+        let (fqdn, target_ip) = target?;
+        let target_fqdn = fqdn.to_string();
+        let target_ip = target_ip.to_string();
 
-        let http_request = client.head(format!("http://{target_fqdn}")).build()?;
+        let http_request = client
+            .head(format!("http://{target_ip}"))
+            .header(reqwest::header::HOST, &target_fqdn)
+            .build()?;
 
         if let Ok(http_response) = client.execute(http_request).await {
-            println!(
-                "{target_fqdn} {target_ip} {} {} {}",
-                http_response.url(),
-                http_response.status().as_u16(),
-                AnonymizedHttpHeader::from(http_response.headers())
-            );
+            let request_url = http_response.url();
+            let response_status = http_response.status().as_u16();
+            let headers = AnonymizedHttpHeaders::from(http_response.headers());
+            println!("{target_fqdn} {target_ip} {request_url} {response_status} {headers}",);
+
+            if let Some(recon_pg_pool) = &recon_pg_pool {
+                submit_http_recon_results(
+                    recon_pg_pool,
+                    &fqdn,
+                    request_url,
+                    response_status,
+                    &headers,
+                )
+                .await?;
+            }
         }
 
-        let https_request = client.head(format!("https://{target_fqdn}")).build()?;
+        let https_request = client
+            .head(format!("https://{target_ip}"))
+            .header(reqwest::header::HOST, &target_fqdn)
+            .build()?;
 
         if let Ok(https_response) = client.execute(https_request).await {
-            println!(
-                "{target_fqdn} {target_ip} {} {} {}",
-                https_response.url(),
-                https_response.status().as_u16(),
-                AnonymizedHttpHeader::from(https_response.headers())
-            );
+            let request_url = https_response.url();
+            let response_status = https_response.status().as_u16();
+            let headers = AnonymizedHttpHeaders::from(https_response.headers());
+            println!("{target_fqdn} {target_ip} {request_url} {response_status} {headers}",);
+
+            if let Some(recon_pg_pool) = &recon_pg_pool {
+                submit_https_recon_results(
+                    recon_pg_pool,
+                    &fqdn,
+                    request_url,
+                    response_status,
+                    &headers,
+                )
+                .await?;
+            }
         }
     }
 

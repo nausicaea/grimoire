@@ -10,6 +10,8 @@ clap = { version = "4.5.9", features = ["derive", "env"] }
 futures = "0.3.30"
 grimoire = { path = "../grimoire" }
 hickory-resolver = "0.24.1"
+itertools = "0.13.0"
+sqlx = { version = "0.7.4", features = ["runtime-tokio", "postgres", "ipnetwork"] }
 tokio = { version = "1.38.0", features = ["macros", "rt-multi-thread", "io-std"] }
 tokio-util = { version = "0.7.11", features = ["io", "codec"] }
 tracing = "0.1.40"

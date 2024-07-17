@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO \"https-recon\" VALUES (DEFAULT, $1, $2, $3, $4)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Varchar",
+        "Text",
+        "Int2",
+        "Jsonb"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "aebf6c141ed4e04a1dc5acd76e527e9fa5cea4d533fa07e35fe7334d348b01f0"
+}

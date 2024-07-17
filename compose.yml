@@ -60,6 +60,8 @@ services:
         PACKAGE: dns-recon
     environment:
       DNS_SERVER: tor-internal.docker
+      RECON_DB_HOST: postgres
+      RECON_DB_PASSWORD: $RECON_DB_PASSWORD
     command: "--help"
     networks:
       internal: {}
@@ -73,6 +75,8 @@ services:
         PACKAGE: http-recon
     environment:
       PROXY: socks5h://tor-internal.docker:9050/
+      RECON_DB_HOST: postgres
+      RECON_DB_PASSWORD: $RECON_DB_PASSWORD
     command: "--help"
     networks:
       internal: {}
