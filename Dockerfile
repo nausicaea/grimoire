@@ -1,6 +1,5 @@
 # syntax=docker/dockerfile:1
 
-#FROM docker.io/library/rust:1.79.0 AS build
 FROM docker.io/clux/muslrust:1.79.0-stable AS build
 ARG ARCH
 ARG PACKAGE
@@ -18,11 +17,12 @@ COPY crates/dns-recon/Cargo.toml ./crates/dns-recon/Cargo.toml
 COPY <<-"EOF" ./crates/dns-recon/src/main.rs
 fn main() { unimplemented!() }
 EOF
-RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked cargo fetch --target $ARCH
+RUN cargo fetch --target $ARCH
 COPY crates ./crates
-RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked cargo build -p $PACKAGE --release --target $ARCH
+COPY migrations ./migrations
+COPY .sqlx ./.sqlx
+RUN cargo build -p $PACKAGE --release --target $ARCH
 
-#FROM docker.io/library/debian:stable-slim
 FROM docker.io/library/alpine:latest
 ARG ARCH
 ARG PACKAGE

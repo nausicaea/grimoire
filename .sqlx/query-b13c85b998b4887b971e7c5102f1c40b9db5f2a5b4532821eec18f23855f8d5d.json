@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO \"cert-recon\" VALUES (DEFAULT, $1, $2)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Varchar",
+        "Varchar"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "b13c85b998b4887b971e7c5102f1c40b9db5f2a5b4532821eec18f23855f8d5d"
+}

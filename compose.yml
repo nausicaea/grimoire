@@ -24,8 +24,17 @@ services:
       internal: {}
     restart: always
 
-  postgresql:
-    image: docker.io/library/postgres:latest
+  postgres:
+    image: docker.io/library/postgres:16-alpine
+    volumes:
+      - ./postgres:/docker-entrypoint-initdb.d:ro
+      - postgres-data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_PASSWORD: $POSTGRES_PASSWORD
+      RECON_DB_PASSWORD: $RECON_DB_PASSWORD
+    networks:
+      outside: {}
+      internal: {}
     restart: always
 
   cert-recon:
@@ -35,6 +44,9 @@ services:
       args:
         ARCH: aarch64-unknown-linux-musl
         PACKAGE: cert-recon
+    environment:
+      RECON_DB_HOST: postgres
+      RECON_DB_PASSWORD: $RECON_DB_PASSWORD
     command: "--help"
     networks:
       outside: {}
@@ -66,8 +78,8 @@ services:
       internal: {}
 
 volumes:
-  mitmproxy-data:
-    external: true
+  mitmproxy-data: {}
+  postgres-data: {}
     
 networks:
   outside:

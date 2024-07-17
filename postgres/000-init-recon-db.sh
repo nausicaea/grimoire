@@ -1,0 +1,9 @@
+#!/bin/sh
+
+set -xe
+
+psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
+	CREATE USER recon WITH ENCRYPTED PASSWORD '$RECON_DB_PASSWORD';
+	CREATE DATABASE recon WITH OWNER = recon;
+	GRANT ALL PRIVILEGES ON DATABASE recon TO recon;
+EOSQL
