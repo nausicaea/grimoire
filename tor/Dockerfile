@@ -1,4 +1,6 @@
-FROM docker.io/library/alpine:latest@sha256:77726ef6b57ddf65bb551896826ec38bc3e53f75cdde31354fbffb4f25238ebd
+# syntax=docker/dockerfile:1
+
+FROM docker.io/library/alpine:latest
 ARG TOR_INTERNAL_ALIAS=tor-internal
 ARG TOR_HTTP_TUNNEL_PORT=1080
 ARG TOR_DNS_PORT=53

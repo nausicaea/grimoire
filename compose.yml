@@ -12,6 +12,7 @@ services:
       internal:
         aliases:
           - tor-internal.docker
+    restart: always
 
   mitmproxy:
     image: nausicaea/mitmproxy:latest
@@ -21,13 +22,20 @@ services:
       - mitmproxy-data:/data
     networks:
       internal: {}
+    restart: always
+
+  postgresql:
+    image: docker.io/library/postgres:latest
+    restart: always
 
   cert-recon:
     image: nausicaea/cert-recon:latest
     build:
       context: .
       args:
+        ARCH: aarch64-unknown-linux-musl
         PACKAGE: cert-recon
+    command: "--help"
     networks:
       outside: {}
 
@@ -36,9 +44,24 @@ services:
     build:
       context: .
       args:
+        ARCH: aarch64-unknown-linux-musl
         PACKAGE: dns-recon
     environment:
       DNS_SERVER: tor-internal.docker
+    command: "--help"
+    networks:
+      internal: {}
+
+  http-recon:
+    image: nausicaea/http-recon:latest
+    build:
+      context: .
+      args:
+        ARCH: aarch64-unknown-linux-musl
+        PACKAGE: http-recon
+    environment:
+      PROXY: socks5h://tor-internal.docker:9050/
+    command: "--help"
     networks:
       internal: {}
 

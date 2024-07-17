@@ -21,11 +21,12 @@ const MAX_HEADER_BUFFER_SIZE: usize = 1024 * 64;
 
 #[derive(Debug, Parser)]
 struct Args {
-    #[arg(short, long)]
+    #[arg(short, long, env = "PROXY")]
     proxy: Option<String>,
     #[arg(
         short,
         long,
+        env = "USER_AGENT",
         default_value = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
     )]
     user_agent: String,

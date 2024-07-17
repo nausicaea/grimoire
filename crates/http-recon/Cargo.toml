@@ -6,7 +6,7 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0.86"
 base64ct = "1.6.0"
-clap = { version = "4.5.9", features = ["derive"] }
+clap = { version = "4.5.9", features = ["derive", "env"] }
 cookie = "0.18.1"
 futures = "0.3.30"
 grimoire = { path = "../grimoire" }
