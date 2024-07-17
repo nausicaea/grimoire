@@ -67,14 +67,17 @@ impl FromStr for Fqdn {
             .map(|splt| splt.map(|elmt| elmt.to_string()).collect())
             .ok_or(ParseFqdnError)?;
 
-        trace!("Validating string against illegal characters");
-        if fqdn.iter().any(|label| {
-            label.ends_with('-')
-                || label.contains("--")
-                || label.starts_with(['-', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'])
-        }) {
-            error!("String contains illegal characters: '{}'", fqdn.join("."));
-            return Err(ParseFqdnError);
+        #[cfg(feature = "strict-fqdn-validation")]
+        {
+            trace!("Validating string against illegal characters");
+            if fqdn.iter().any(|label| {
+                label.ends_with('-')
+                    || label.contains("--")
+                    || label.starts_with(['-', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'])
+            }) {
+                error!("String contains illegal characters: '{}'", fqdn.join("."));
+                return Err(ParseFqdnError);
+            }
         }
 
         Ok(Fqdn(fqdn))
