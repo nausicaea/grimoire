@@ -55,7 +55,7 @@ impl FromStr for Fqdn {
 
         trace!("Validating string length");
         if s.is_empty() || s.len() > 253 {
-            error!("String is empty or longer than 253 characters");
+            error!("String is empty or longer than 253 characters: '{s}'");
             return Err(ParseFqdnError);
         }
 
@@ -73,7 +73,7 @@ impl FromStr for Fqdn {
                 || label.contains("--")
                 || label.starts_with(['-', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'])
         }) {
-            error!("String contains illegal characters");
+            error!("String contains illegal characters: '{}'", fqdn.join("."));
             return Err(ParseFqdnError);
         }
 
