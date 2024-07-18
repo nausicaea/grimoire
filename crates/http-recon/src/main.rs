@@ -2,13 +2,15 @@ use std::{
     collections::HashMap,
     fmt::Display,
     net::{AddrParseError, IpAddr},
+    pin::pin,
     str::FromStr,
+    sync::Arc,
     time::Duration,
 };
 
 use clap::Parser;
 use cookie::Cookie;
-use futures::StreamExt;
+use futures::{future::join, FutureExt, StreamExt};
 use grimoire::{create_recon_db_pool, Fqdn, ParseFqdnError};
 use itertools::Itertools;
 use reqwest::{header::HeaderMap, redirect::Policy, Proxy, Url};
@@ -16,8 +18,9 @@ use reqwest_leaky_bucket::leaky_bucket::RateLimiter;
 use reqwest_middleware::{ClientBuilder, ClientWithMiddleware};
 use sqlx::{query, query_scalar, PgPool};
 use thiserror::Error;
-use tokio_util::codec::{LinesCodec, LinesCodecError};
-use tracing::{debug, error, info};
+use tokio::io::stdin;
+use tokio_util::codec::{FramedRead, LinesCodec, LinesCodecError};
+use tracing::{debug, error, info, warn};
 use tracing_subscriber::EnvFilter;
 
 const MAX_HEADER_BUFFER_SIZE: usize = 1024 * 64;
@@ -171,14 +174,14 @@ async fn submit_https_recon_results(
 
 #[tracing::instrument]
 async fn recon_http(
-    pg_pool: &Option<PgPool>,
-    client: &ClientWithMiddleware,
-    fqdn: &Fqdn,
-    ip: &IpAddr,
+    pg_pool: Option<Arc<PgPool>>,
+    client: Arc<ClientWithMiddleware>,
+    fqdn: Arc<Fqdn>,
+    ip: Arc<IpAddr>,
     query_known_results: bool,
 ) -> anyhow::Result<()> {
-    if let Some(recon_pg_pool) = pg_pool {
-        if !query_known_results && is_http_recon_result_in_db(recon_pg_pool, fqdn).await {
+    if let Some(recon_pg_pool) = &pg_pool {
+        if !query_known_results && is_http_recon_result_in_db(recon_pg_pool, &fqdn).await {
             return Ok(());
         }
     }
@@ -194,8 +197,8 @@ async fn recon_http(
         let headers = AnonymizedHttpHeaders::from(http_response.headers());
         println!("{fqdn} {ip} {request_url} {response_status} {headers}",);
 
-        if let Some(recon_pg_pool) = pg_pool {
-            submit_http_recon_results(recon_pg_pool, fqdn, request_url, response_status, &headers)
+        if let Some(recon_pg_pool) = &pg_pool {
+            submit_http_recon_results(recon_pg_pool, &fqdn, request_url, response_status, &headers)
                 .await?;
         }
     }
@@ -205,14 +208,14 @@ async fn recon_http(
 
 #[tracing::instrument]
 async fn recon_https(
-    pg_pool: &Option<PgPool>,
-    client: &ClientWithMiddleware,
-    fqdn: &Fqdn,
-    ip: &IpAddr,
+    pg_pool: Option<Arc<PgPool>>,
+    client: Arc<ClientWithMiddleware>,
+    fqdn: Arc<Fqdn>,
+    ip: Arc<IpAddr>,
     query_known_results: bool,
 ) -> anyhow::Result<()> {
-    if let Some(recon_pg_pool) = pg_pool {
-        if !query_known_results && is_https_recon_result_in_db(recon_pg_pool, fqdn).await {
+    if let Some(recon_pg_pool) = &pg_pool {
+        if !query_known_results && is_https_recon_result_in_db(recon_pg_pool, &fqdn).await {
             return Ok(());
         }
     }
@@ -228,9 +231,15 @@ async fn recon_https(
         let headers = AnonymizedHttpHeaders::from(https_response.headers());
         println!("{fqdn} {ip} {request_url} {response_status} {headers}",);
 
-        if let Some(recon_pg_pool) = pg_pool {
-            submit_https_recon_results(recon_pg_pool, fqdn, request_url, response_status, &headers)
-                .await?;
+        if let Some(recon_pg_pool) = &pg_pool {
+            submit_https_recon_results(
+                recon_pg_pool,
+                &fqdn,
+                request_url,
+                response_status,
+                &headers,
+            )
+            .await?;
         }
     }
 
@@ -321,7 +330,7 @@ async fn main() -> anyhow::Result<()> {
 
     let recon_pg_pool = if args.store_results {
         debug!("Establishing a connection to the recon database");
-        Some(
+        Some(Arc::new(
             create_recon_db_pool(
                 &args.recon_db_host,
                 &args.recon_db_username,
@@ -329,27 +338,10 @@ async fn main() -> anyhow::Result<()> {
                 &args.recon_db_database,
             )
             .await?,
-        )
+        ))
     } else {
         None
     };
-
-    debug!("Creating a stream from Stdin, decoded as lines, and parsed as pairs FQDNs and IPs");
-    let mut target_stream =
-        tokio_util::codec::FramedRead::new(tokio::io::stdin(), LinesCodec::new()).map(
-            |line_result| {
-                line_result.map_err(Error::from).and_then(|line| {
-                    line.split_once(' ')
-                        .ok_or(Error::InputSplit)
-                        .and_then(|(fqdn_str, ip_str)| {
-                            let fqdn = Fqdn::from_str(fqdn_str)?;
-                            let ip_addr = IpAddr::from_str(ip_str)?;
-
-                            Ok((fqdn, ip_addr))
-                        })
-                })
-            },
-        );
 
     debug!("Creating the rate limiter");
     let limiter = RateLimiter::builder()
@@ -372,29 +364,55 @@ async fn main() -> anyhow::Result<()> {
     .build()?;
 
     debug!("Wrapping the HTTP client to enable rate limiting");
-    let client = ClientBuilder::new(client)
-        .with(reqwest_leaky_bucket::rate_limit_all(limiter))
-        .build();
+    let client = Arc::new(
+        ClientBuilder::new(client)
+            .with(reqwest_leaky_bucket::rate_limit_all(limiter))
+            .build(),
+    );
+
+    debug!("Creating a stream from Stdin, decoded as lines, and parsed as pairs FQDNs and IPs");
+    info!("Lines that don't parse as pairs of FQDN and IP address are silently ignored");
+    let query_known_results = args.query_known_results;
+    let mut data_stream = pin!(FramedRead::new(stdin(), LinesCodec::new())
+        .filter_map(|line_result| async move { line_result.map_err(|e| warn!("{e}")).ok() })
+        .filter_map(|line| async move {
+            line.split_once(' ')
+                .ok_or(Error::InputSplit)
+                .and_then(|(fqdn_str, ip_addr_str)| {
+                    let fqdn = Arc::new(Fqdn::from_str(fqdn_str)?);
+                    let ip_addr = Arc::new(IpAddr::from_str(ip_addr_str)?);
+
+                    Ok((fqdn, ip_addr))
+                })
+                .map_err(|e| warn!("{e}"))
+                .ok()
+        })
+        .flat_map_unordered(None, |(fqdn, ip_addr)| {
+            Box::pin(
+                join(
+                    recon_http(
+                        recon_pg_pool.clone(),
+                        client.clone(),
+                        fqdn.clone(),
+                        ip_addr.clone(),
+                        query_known_results,
+                    ),
+                    recon_https(
+                        recon_pg_pool.clone(),
+                        client.clone(),
+                        fqdn.clone(),
+                        ip_addr.clone(),
+                        query_known_results,
+                    ),
+                )
+                .into_stream(),
+            )
+        }));
 
     debug!("Starting HTTP(s) recon");
-    while let Some(target) = target_stream.next().await {
-        let (fqdn, ip) = target?;
-        recon_http(
-            &recon_pg_pool,
-            &client,
-            &fqdn,
-            &ip,
-            args.query_known_results,
-        )
-        .await?;
-        recon_https(
-            &recon_pg_pool,
-            &client,
-            &fqdn,
-            &ip,
-            args.query_known_results,
-        )
-        .await?;
+    while let Some((http, https)) = data_stream.next().await {
+        http?;
+        https?;
     }
 
     Ok(())
