@@ -76,11 +76,12 @@ async fn submit_http_recon_results(
     }
 
     query!(
-        r#"INSERT INTO "http-recon" VALUES (DEFAULT, $1, $2, $3, $4)"#,
+        r#"INSERT INTO "http-recon" VALUES (DEFAULT, $1, $2, $3, $4, $5)"#,
         &fqdn,
         url.to_string(),
         response_status as i32,
         serde_json::to_value(headers)?,
+        url.domain(),
     )
     .execute(pg_pool)
     .await?;

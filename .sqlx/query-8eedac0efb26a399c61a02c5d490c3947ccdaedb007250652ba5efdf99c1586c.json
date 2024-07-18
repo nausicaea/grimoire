@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "INSERT INTO \"http-recon\" VALUES (DEFAULT, $1, $2, $3, $4)",
+  "query": "INSERT INTO \"http-recon\" VALUES (DEFAULT, $1, $2, $3, $4, $5)",
   "describe": {
     "columns": [],
     "parameters": {
@@ -8,10 +8,11 @@
         "Varchar",
         "Text",
         "Int2",
-        "Jsonb"
+        "Jsonb",
+        "Varchar"
       ]
     },
     "nullable": []
   },
-  "hash": "53882576689dd7a84724b4f1ff41d1a0969f6079001d298c355c4a91a319f477"
+  "hash": "8eedac0efb26a399c61a02c5d490c3947ccdaedb007250652ba5efdf99c1586c"
 }
