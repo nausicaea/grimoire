@@ -863,6 +863,9 @@ dependencies = [
  "grimoire",
  "itertools",
  "reqwest",
+ "reqwest-leaky-bucket",
+ "reqwest-middleware",
+ "reqwest-ratelimit",
  "serde",
  "serde_json",
  "sqlx",
@@ -1046,6 +1049,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
 dependencies = [
  "spin",
+]
+
+[[package]]
+name = "leaky-bucket"
+version = "1.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0a396bb213c2d09ed6c5495fd082c991b6ab39c9daf4fff59e6727f85c73e4c5"
+dependencies = [
+ "parking_lot",
+ "pin-project-lite",
+ "tokio",
 ]
 
 [[package]]
@@ -1609,6 +1623,44 @@ dependencies = [
  "wasm-bindgen-futures",
  "web-sys",
  "winreg 0.52.0",
+]
+
+[[package]]
+name = "reqwest-leaky-bucket"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "54e0468c45c2209287c84c8fc8a5d72a2f1a9917e1c7a427cdf893df464c0ced"
+dependencies = [
+ "async-trait",
+ "leaky-bucket",
+ "reqwest-ratelimit",
+]
+
+[[package]]
+name = "reqwest-middleware"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "39346a33ddfe6be00cbc17a34ce996818b97b230b87229f10114693becca1268"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "http",
+ "reqwest",
+ "serde",
+ "thiserror",
+ "tower-service",
+]
+
+[[package]]
+name = "reqwest-ratelimit"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f2c673125eda7cae1344f1cfa6ca20afab39cd86a3ec57b949bec1c580eb8c87"
+dependencies = [
+ "async-trait",
+ "http",
+ "reqwest",
+ "reqwest-middleware",
 ]
 
 [[package]]

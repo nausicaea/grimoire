@@ -40,6 +40,7 @@ struct Args {
     store_results: bool,
     /// If enabled, run queries again even if the result is known. Ignored when results are not
     /// stored in the recon database
+    #[arg(long)]
     query_known_results: bool,
     /// The port used by the DNS resolver to connect to the DNS server
     #[arg(short = 'p', long, env = "DNS_PORT", default_value_t = 53)]

@@ -11,7 +11,9 @@ use cookie::Cookie;
 use futures::StreamExt;
 use grimoire::{create_recon_db_pool, Fqdn, ParseFqdnError};
 use itertools::Itertools;
-use reqwest::{header::HeaderMap, redirect::Policy, ClientBuilder, Proxy, Url};
+use reqwest::{header::HeaderMap, redirect::Policy, Proxy, Url};
+use reqwest_leaky_bucket::leaky_bucket::RateLimiter;
+use reqwest_middleware::{ClientBuilder, ClientWithMiddleware};
 use sqlx::{query, query_scalar, PgPool};
 use thiserror::Error;
 use tokio_util::codec::{LinesCodec, LinesCodecError};
@@ -20,6 +22,7 @@ use tracing_subscriber::EnvFilter;
 
 const MAX_HEADER_BUFFER_SIZE: usize = 1024 * 64;
 
+/// Perform mass HTTP(s) connection attempts in order to reconnoiter an entire domain
 #[derive(Debug, Parser)]
 struct Args {
     /// The IPv4 or IPv6 address or the host name of the recon database service
@@ -37,8 +40,14 @@ struct Args {
     /// If enabled, store the results in the recon database
     #[arg(short, long)]
     store_results: bool,
+    /// If enabled, run queries again even if the result is known. Ignored when results are not
+    /// stored in the recon database
+    #[arg(long)]
+    query_known_results: bool,
+    /// Optionally proxy the HTTP(s) requests
     #[arg(short, long, env = "PROXY")]
     proxy: Option<String>,
+    /// Define the user agent header used during HTTP(s) requests
     #[arg(
         short,
         long,
@@ -46,12 +55,49 @@ struct Args {
         default_value = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
     )]
     user_agent: String,
+    /// Define the total request timeout in seconds
     #[arg(short, long, default_value_t = 10_u64)]
     timeout_secs: u64,
+    /// Define the number of requests performed per minute
+    #[arg(short, long, default_value_t = 60_usize)]
+    requests_per_minute: usize,
+    /// Define the maximum number of requests that can be accumulated
+    #[arg(short, long, default_value_t = 600_usize)]
+    request_max_budget: usize,
+    /// When connecting to HTTPS services, accept invalid certificates
     #[arg(short, long, default_value_t = true)]
     accept_invalid_certs: bool,
 }
 
+#[tracing::instrument]
+async fn is_http_recon_result_in_db(pg_pool: &PgPool, fqdn: &Fqdn) -> bool {
+    let recon_db_entry_count = query_scalar!(
+        r#"SELECT COUNT(*) FROM "http-recon" WHERE "fqdn" = $1"#,
+        fqdn.to_string(),
+    )
+    .fetch_one(pg_pool)
+    .await
+    .map(|c| c.map(|c| c as usize).unwrap_or(0_usize))
+    .unwrap_or(0_usize);
+
+    recon_db_entry_count != 0
+}
+
+#[tracing::instrument]
+async fn is_https_recon_result_in_db(pg_pool: &PgPool, fqdn: &Fqdn) -> bool {
+    let recon_db_entry_count = query_scalar!(
+        r#"SELECT COUNT(*) FROM "https-recon" WHERE "fqdn" = $1"#,
+        fqdn.to_string(),
+    )
+    .fetch_one(pg_pool)
+    .await
+    .map(|c| c.map(|c| c as usize).unwrap_or(0_usize))
+    .unwrap_or(0_usize);
+
+    recon_db_entry_count != 0
+}
+
+#[tracing::instrument]
 async fn submit_http_recon_results(
     pg_pool: &PgPool,
     fqdn: &Fqdn,
@@ -89,6 +135,7 @@ async fn submit_http_recon_results(
     Ok(())
 }
 
+#[tracing::instrument]
 async fn submit_https_recon_results(
     pg_pool: &PgPool,
     fqdn: &Fqdn,
@@ -121,6 +168,74 @@ async fn submit_https_recon_results(
     )
     .execute(pg_pool)
     .await?;
+
+    Ok(())
+}
+
+#[tracing::instrument]
+async fn recon_http(
+    pg_pool: &Option<PgPool>,
+    client: &ClientWithMiddleware,
+    fqdn: &Fqdn,
+    ip: &IpAddr,
+    query_known_results: bool,
+) -> anyhow::Result<()> {
+    if let Some(recon_pg_pool) = pg_pool {
+        if !query_known_results && is_http_recon_result_in_db(recon_pg_pool, fqdn).await {
+            return Ok(());
+        }
+    }
+
+    let http_request = client
+        .head(format!("http://{ip}"))
+        .header(reqwest::header::HOST, fqdn.to_string())
+        .build()?;
+
+    if let Ok(http_response) = client.execute(http_request).await {
+        let request_url = http_response.url();
+        let response_status = http_response.status().as_u16();
+        let headers = AnonymizedHttpHeaders::from(http_response.headers());
+        println!("{fqdn} {ip} {request_url} {response_status} {headers}",);
+
+        if let Some(recon_pg_pool) = pg_pool {
+            submit_http_recon_results(recon_pg_pool, fqdn, request_url, response_status, &headers)
+                .await?;
+        }
+    }
+
+    Ok(())
+}
+
+#[tracing::instrument]
+async fn recon_https(
+    pg_pool: &Option<PgPool>,
+    client: &ClientWithMiddleware,
+    fqdn: &Fqdn,
+    ip: &IpAddr,
+    query_known_results: bool,
+) -> anyhow::Result<()> {
+    if let Some(recon_pg_pool) = pg_pool {
+        if !query_known_results && is_https_recon_result_in_db(recon_pg_pool, fqdn).await {
+            return Ok(());
+        }
+    }
+
+    let https_request = client
+        .head(format!("https://{ip}"))
+        .header(reqwest::header::HOST, fqdn.to_string())
+        .build()?;
+
+    if let Ok(https_response) = client.execute(https_request).await {
+        let request_url = https_response.url();
+        let response_status = https_response.status().as_u16();
+        let headers = AnonymizedHttpHeaders::from(https_response.headers());
+        println!("{fqdn} {ip} {request_url} {response_status} {headers}",);
+
+        if let Some(recon_pg_pool) = pg_pool {
+            submit_https_recon_results(recon_pg_pool, fqdn, request_url, response_status, &headers)
+                .await?;
+        }
+    }
 
     Ok(())
 }
@@ -239,10 +354,19 @@ async fn main() -> anyhow::Result<()> {
             },
         );
 
+    debug!("Creating the rate limiter");
+    let limiter = RateLimiter::builder()
+        .initial(0)
+        .refill(args.requests_per_minute)
+        .interval(Duration::from_secs(60))
+        .max(args.request_max_budget)
+        .build();
+
+    debug!("Creating the reqwest HTTP client");
     let client = if let Some(proxy) = args.proxy {
-        ClientBuilder::default().proxy(Proxy::all(proxy)?)
+        reqwest::ClientBuilder::default().proxy(Proxy::all(proxy)?)
     } else {
-        ClientBuilder::default()
+        reqwest::ClientBuilder::default()
     }
     .danger_accept_invalid_certs(args.accept_invalid_certs)
     .user_agent(&args.user_agent)
@@ -250,56 +374,30 @@ async fn main() -> anyhow::Result<()> {
     .timeout(Duration::from_secs(args.timeout_secs))
     .build()?;
 
+    debug!("Wrapping the HTTP client to enable rate limiting");
+    let client = ClientBuilder::new(client)
+        .with(reqwest_leaky_bucket::rate_limit_all(limiter))
+        .build();
+
+    debug!("Starting HTTP(s) recon");
     while let Some(target) = target_stream.next().await {
-        let (fqdn, target_ip) = target?;
-        let target_fqdn = fqdn.to_string();
-        let target_ip = target_ip.to_string();
-
-        let http_request = client
-            .head(format!("http://{target_ip}"))
-            .header(reqwest::header::HOST, &target_fqdn)
-            .build()?;
-
-        if let Ok(http_response) = client.execute(http_request).await {
-            let request_url = http_response.url();
-            let response_status = http_response.status().as_u16();
-            let headers = AnonymizedHttpHeaders::from(http_response.headers());
-            println!("{target_fqdn} {target_ip} {request_url} {response_status} {headers}",);
-
-            if let Some(recon_pg_pool) = &recon_pg_pool {
-                submit_http_recon_results(
-                    recon_pg_pool,
-                    &fqdn,
-                    request_url,
-                    response_status,
-                    &headers,
-                )
-                .await?;
-            }
-        }
-
-        let https_request = client
-            .head(format!("https://{target_ip}"))
-            .header(reqwest::header::HOST, &target_fqdn)
-            .build()?;
-
-        if let Ok(https_response) = client.execute(https_request).await {
-            let request_url = https_response.url();
-            let response_status = https_response.status().as_u16();
-            let headers = AnonymizedHttpHeaders::from(https_response.headers());
-            println!("{target_fqdn} {target_ip} {request_url} {response_status} {headers}",);
-
-            if let Some(recon_pg_pool) = &recon_pg_pool {
-                submit_https_recon_results(
-                    recon_pg_pool,
-                    &fqdn,
-                    request_url,
-                    response_status,
-                    &headers,
-                )
-                .await?;
-            }
-        }
+        let (fqdn, ip) = target?;
+        recon_http(
+            &recon_pg_pool,
+            &client,
+            &fqdn,
+            &ip,
+            args.query_known_results,
+        )
+        .await?;
+        recon_https(
+            &recon_pg_pool,
+            &client,
+            &fqdn,
+            &ip,
+            args.query_known_results,
+        )
+        .await?;
     }
 
     Ok(())
