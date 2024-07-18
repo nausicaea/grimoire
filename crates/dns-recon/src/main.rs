@@ -5,18 +5,19 @@ use std::{
     net::{IpAddr, SocketAddr},
     pin::pin,
     str::FromStr,
+    sync::Arc,
 };
 use tokio::io::stdin;
 
 use clap::Parser;
-use futures::StreamExt;
+use futures::{FutureExt, StreamExt};
 use grimoire::{create_recon_db_pool, Fqdn, IpAddrOrFqdn};
 use hickory_resolver::{
     config::{Protocol, ResolverConfig, ResolverOpts},
     AsyncResolver,
 };
 use tokio_util::codec::{FramedRead, LinesCodec};
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 use tracing_subscriber::EnvFilter;
 
 /// Performs mass DNS resolution using the selected DNS server
@@ -70,11 +71,9 @@ async fn submit_dns_recon_results(
     fqdn: &Fqdn,
     ips: &[IpAddr],
 ) -> anyhow::Result<()> {
-    let fqdn = fqdn.to_string();
-
     let recon_db_entry_count = query_scalar!(
         r#"SELECT COUNT(*) FROM "dns-recon" WHERE "fqdn" = $1"#,
-        &fqdn
+        fqdn.to_string(),
     )
     .fetch_one(pg_pool)
     .await?
@@ -92,14 +91,29 @@ async fn submit_dns_recon_results(
     }
 
     query!(
-        r#"INSERT INTO "dns-recon" VALUES (DEFAULT, $1, $2)"#,
-        &fqdn,
-        &ip_networks
+        r#"INSERT INTO "dns-recon" VALUES (DEFAULT, $1, $2, $3)"#,
+        fqdn.to_string(),
+        &ip_networks,
+        fqdn.domain(),
     )
     .execute(pg_pool)
     .await?;
 
     Ok(())
+}
+
+#[tracing::instrument]
+async fn filter_known_results(
+    pg_pool: Option<Arc<PgPool>>,
+    fqdn: Arc<Fqdn>,
+    query_known_results: bool,
+) -> bool {
+    if let Some(pg_pool) = pg_pool {
+        if !query_known_results && is_dns_recon_result_in_db(&pg_pool, &fqdn).await {
+            return false;
+        }
+    }
+    true
 }
 
 #[tokio::main]
@@ -114,7 +128,7 @@ async fn main() -> anyhow::Result<()> {
 
     let recon_pg_pool = if args.store_results {
         debug!("Establishing a connection to the recon database");
-        Some(
+        Some(Arc::new(
             create_recon_db_pool(
                 &args.recon_db_host,
                 &args.recon_db_username,
@@ -122,15 +136,10 @@ async fn main() -> anyhow::Result<()> {
                 &args.recon_db_database,
             )
             .await?,
-        )
+        ))
     } else {
         None
     };
-
-    debug!("Creating a stream from Stdin, decoded as lines, and parsed as FQDNs");
-    info!("Lines that don't parse as FQDNs are silently ignored");
-    let mut fqdn_stream = pin!(FramedRead::new(stdin(), LinesCodec::new())
-        .filter_map(|line| async move { line.map(|line| Fqdn::from_str(&line).ok()).transpose() }));
 
     let dns_server = match &args.dns_server {
         IpAddrOrFqdn::IpAddr(dns_addr) => *dns_addr,
@@ -159,16 +168,37 @@ async fn main() -> anyhow::Result<()> {
     debug!("Creating the resolver");
     let resolver = AsyncResolver::tokio(resolver_config, ResolverOpts::default());
 
-    debug!("Performing the DNS query for the input");
-    'outer: while let Some(fqdn) = fqdn_stream.next().await {
-        let fqdn = fqdn?;
-        if let Some(recon_pg_pool) = &recon_pg_pool {
-            if !args.query_known_results && is_dns_recon_result_in_db(recon_pg_pool, &fqdn).await {
-                continue 'outer;
-            }
-        }
+    debug!("Creating a stream from Stdin, decoded as lines, and parsed as FQDNs");
+    info!("Lines that don't parse as FQDNs are silently ignored");
+    let query_known_results = args.query_known_results;
+    let mut data_stream = pin!(FramedRead::new(stdin(), LinesCodec::new())
+        .filter_map(|line_result| async move { line_result.map_err(|e| warn!("{e}")).ok() })
+        .filter_map(|line| async move {
+            Fqdn::from_str(&line)
+                .map(Arc::new)
+                .map_err(|e| warn!("{e}"))
+                .ok()
+        })
+        .filter(|fqdn| filter_known_results(
+            recon_pg_pool.clone(),
+            fqdn.clone(),
+            query_known_results
+        ))
+        .flat_map_unordered(None, |fqdn| Box::pin(
+            resolver.lookup_ip(format!("{}.", fqdn)).into_stream()
+        )));
 
-        if let Ok(lookup_ip) = resolver.lookup_ip(format!("{}.", &fqdn)).await {
+    debug!("Performing the DNS query for the input");
+    while let Some(lookup_result) = data_stream.next().await {
+        if let Ok(lookup_ip) = lookup_result {
+            let fqdn = Fqdn(
+                lookup_ip
+                    .query()
+                    .name()
+                    .iter()
+                    .map(|lbl| String::from_utf8_lossy(lbl).to_string())
+                    .collect(),
+            );
             let ips: Vec<_> = lookup_ip.iter().collect();
 
             println!("{} {}", &fqdn, ips.iter().join(" "));

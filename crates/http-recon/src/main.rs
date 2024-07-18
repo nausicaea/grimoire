@@ -105,11 +105,9 @@ async fn submit_http_recon_results(
     response_status: u16,
     headers: &AnonymizedHttpHeaders,
 ) -> anyhow::Result<()> {
-    let fqdn = fqdn.to_string();
-
     let recon_db_entry_count = query_scalar!(
         r#"SELECT COUNT(*) FROM "http-recon" WHERE "fqdn" = $1"#,
-        &fqdn
+        fqdn.to_string(),
     )
     .fetch_one(pg_pool)
     .await?
@@ -123,11 +121,11 @@ async fn submit_http_recon_results(
 
     query!(
         r#"INSERT INTO "http-recon" VALUES (DEFAULT, $1, $2, $3, $4, $5)"#,
-        &fqdn,
+        fqdn.to_string(),
         url.to_string(),
         response_status as i32,
         serde_json::to_value(headers)?,
-        url.domain(),
+        fqdn.domain(),
     )
     .execute(pg_pool)
     .await?;
@@ -143,11 +141,9 @@ async fn submit_https_recon_results(
     response_status: u16,
     headers: &AnonymizedHttpHeaders,
 ) -> anyhow::Result<()> {
-    let fqdn = fqdn.to_string();
-
     let recon_db_entry_count = query_scalar!(
         r#"SELECT COUNT(*) FROM "https-recon" WHERE "fqdn" = $1"#,
-        &fqdn
+        fqdn.to_string(),
     )
     .fetch_one(pg_pool)
     .await?
@@ -160,11 +156,12 @@ async fn submit_https_recon_results(
     }
 
     query!(
-        r#"INSERT INTO "https-recon" VALUES (DEFAULT, $1, $2, $3, $4)"#,
-        &fqdn,
+        r#"INSERT INTO "https-recon" VALUES (DEFAULT, $1, $2, $3, $4, $5)"#,
+        fqdn.to_string(),
         url.to_string(),
         response_status as i32,
         serde_json::to_value(headers)?,
+        fqdn.domain(),
     )
     .execute(pg_pool)
     .await?;

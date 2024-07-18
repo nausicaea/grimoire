@@ -43,6 +43,12 @@ pub async fn create_recon_db_pool(
 #[derive(Debug, Clone)]
 pub struct Fqdn(pub Vec<String>);
 
+impl Fqdn {
+    pub fn domain(&self) -> String {
+        self.0[self.0.len() - 2..].join(".")
+    }
+}
+
 impl FromStr for Fqdn {
     type Err = ParseFqdnError;
 
