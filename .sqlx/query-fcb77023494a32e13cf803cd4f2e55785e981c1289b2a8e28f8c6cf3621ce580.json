@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT\n            (SELECT COUNT(*) FROM \"http-recon\" WHERE \"fqdn\" = $1) AS http_count,\n            (SELECT COUNT(*) FROM \"https-recon\" WHERE \"fqdn\" = $1) AS https_count;\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "http_count",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "https_count",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      null,
+      null
+    ]
+  },
+  "hash": "fcb77023494a32e13cf803cd4f2e55785e981c1289b2a8e28f8c6cf3621ce580"
+}

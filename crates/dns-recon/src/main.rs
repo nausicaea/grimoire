@@ -14,6 +14,7 @@ use futures::{FutureExt, StreamExt};
 use grimoire::{create_recon_db_pool, Fqdn, IpAddrOrFqdn};
 use hickory_resolver::{
     config::{Protocol, ResolverConfig, ResolverOpts},
+    error::ResolveErrorKind,
     AsyncResolver,
 };
 use tokio_util::codec::{FramedRead, LinesCodec};
@@ -190,22 +191,30 @@ async fn main() -> anyhow::Result<()> {
 
     debug!("Performing the DNS query for the input");
     while let Some(lookup_result) = data_stream.next().await {
-        if let Ok(lookup_ip) = lookup_result {
-            let fqdn = Fqdn(
-                lookup_ip
-                    .query()
-                    .name()
-                    .iter()
-                    .map(|lbl| String::from_utf8_lossy(lbl).to_string())
-                    .collect(),
-            );
-            let ips: Vec<_> = lookup_ip.iter().collect();
+        match lookup_result {
+            Ok(lookup_ip) => {
+                let fqdn = Fqdn::from(lookup_ip.query().name());
+                let ips: Vec<_> = lookup_ip.iter().collect();
 
-            println!("{} {}", &fqdn, ips.iter().join(" "));
+                println!("{} {}", &fqdn, ips.iter().join(" "));
 
-            if let Some(recon_pg_pool) = &recon_pg_pool {
-                submit_dns_recon_results(recon_pg_pool, &fqdn, &ips).await?;
+                if let Some(recon_pg_pool) = &recon_pg_pool {
+                    submit_dns_recon_results(recon_pg_pool, &fqdn, &ips).await?;
+                }
             }
+            Err(e) => match e.kind() {
+                ResolveErrorKind::NoRecordsFound { query, .. } => {
+                    let fqdn = Fqdn::from(query.name());
+
+                    debug!("Error resolving the FQDN '{}': {}", &fqdn, e);
+                    if let Some(recon_pg_pool) = &recon_pg_pool {
+                        submit_dns_recon_results(recon_pg_pool, &fqdn, &[]).await?;
+                    }
+                }
+                _ => {
+                    return Err(e.into());
+                }
+            },
         }
     }
 

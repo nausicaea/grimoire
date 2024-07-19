@@ -10,13 +10,13 @@ use std::{
 
 use clap::Parser;
 use cookie::Cookie;
-use futures::{future::join, FutureExt, StreamExt};
+use futures::{FutureExt, StreamExt};
 use grimoire::{create_recon_db_pool, Fqdn, ParseFqdnError};
 use itertools::Itertools;
 use reqwest::{header::HeaderMap, redirect::Policy, Proxy, Url};
 use reqwest_leaky_bucket::leaky_bucket::RateLimiter;
 use reqwest_middleware::{ClientBuilder, ClientWithMiddleware};
-use sqlx::{query, query_scalar, PgPool};
+use sqlx::{query, query_as, query_scalar, PgPool};
 use thiserror::Error;
 use tokio::io::stdin;
 use tokio_util::codec::{FramedRead, LinesCodec, LinesCodecError};
@@ -72,32 +72,31 @@ struct Args {
     accept_invalid_certs: bool,
 }
 
-#[tracing::instrument]
-async fn is_http_recon_result_in_db(pg_pool: &PgPool, fqdn: &Fqdn) -> bool {
-    let recon_db_entry_count = query_scalar!(
-        r#"SELECT COUNT(*) FROM "http-recon" WHERE "fqdn" = $1"#,
-        fqdn.to_string(),
-    )
-    .fetch_one(pg_pool)
-    .await
-    .map(|c| c.map(|c| c as usize).unwrap_or(0_usize))
-    .unwrap_or(0_usize);
-
-    recon_db_entry_count != 0
+#[derive(Debug, Default)]
+struct CountPair {
+    http_count: Option<i64>,
+    https_count: Option<i64>,
 }
 
 #[tracing::instrument]
-async fn is_https_recon_result_in_db(pg_pool: &PgPool, fqdn: &Fqdn) -> bool {
-    let recon_db_entry_count = query_scalar!(
-        r#"SELECT COUNT(*) FROM "https-recon" WHERE "fqdn" = $1"#,
+async fn is_http_recon_result_in_db(pg_pool: &PgPool, fqdn: &Fqdn) -> (bool, bool) {
+    let counts = query_as!(
+        CountPair,
+        r#"
+        SELECT
+            (SELECT COUNT(*) FROM "http-recon" WHERE "fqdn" = $1) AS http_count,
+            (SELECT COUNT(*) FROM "https-recon" WHERE "fqdn" = $1) AS https_count;
+        "#,
         fqdn.to_string(),
     )
     .fetch_one(pg_pool)
     .await
-    .map(|c| c.map(|c| c as usize).unwrap_or(0_usize))
-    .unwrap_or(0_usize);
+    .unwrap_or_default();
 
-    recon_db_entry_count != 0
+    (
+        counts.http_count.unwrap_or(0) != 0,
+        counts.https_count.unwrap_or(0) != 0,
+    )
 }
 
 #[tracing::instrument]
@@ -106,7 +105,7 @@ async fn submit_http_recon_results(
     fqdn: &Fqdn,
     url: &Url,
     response_status: u16,
-    headers: &AnonymizedHttpHeaders,
+    headers: Option<&AnonymizedHttpHeaders>,
 ) -> anyhow::Result<()> {
     let recon_db_entry_count = query_scalar!(
         r#"SELECT COUNT(*) FROM "http-recon" WHERE "fqdn" = $1"#,
@@ -127,7 +126,9 @@ async fn submit_http_recon_results(
         fqdn.to_string(),
         url.to_string(),
         response_status as i32,
-        serde_json::to_value(headers)?,
+        headers
+            .and_then(|h| serde_json::to_value(h).map_err(|e| error!("{}", e)).ok())
+            .unwrap_or(serde_json::json!({})),
         fqdn.domain(),
     )
     .execute(pg_pool)
@@ -142,7 +143,7 @@ async fn submit_https_recon_results(
     fqdn: &Fqdn,
     url: &Url,
     response_status: u16,
-    headers: &AnonymizedHttpHeaders,
+    headers: Option<&AnonymizedHttpHeaders>,
 ) -> anyhow::Result<()> {
     let recon_db_entry_count = query_scalar!(
         r#"SELECT COUNT(*) FROM "https-recon" WHERE "fqdn" = $1"#,
@@ -163,7 +164,9 @@ async fn submit_https_recon_results(
         fqdn.to_string(),
         url.to_string(),
         response_status as i32,
-        serde_json::to_value(headers)?,
+        headers
+            .and_then(|h| serde_json::to_value(h).map_err(|e| error!("{}", e)).ok())
+            .unwrap_or(serde_json::json!({})),
         fqdn.domain(),
     )
     .execute(pg_pool)
@@ -180,69 +183,75 @@ async fn recon_http(
     ip: Arc<IpAddr>,
     query_known_results: bool,
 ) -> anyhow::Result<()> {
-    if let Some(recon_pg_pool) = &pg_pool {
-        if !query_known_results && is_http_recon_result_in_db(recon_pg_pool, &fqdn).await {
-            return Ok(());
+    let (skip_http_recon, skip_https_recon) = if let Some(recon_pg_pool) = &pg_pool {
+        is_http_recon_result_in_db(recon_pg_pool, &fqdn).await
+    } else {
+        (false, false)
+    };
+
+    if query_known_results || !skip_http_recon {
+        let url = Url::parse(&format!("http://{ip}"))?;
+        let request = client
+            .head(url.clone())
+            .header(reqwest::header::HOST, fqdn.to_string())
+            .build()?;
+
+        match client.execute(request).await {
+            Ok(response) => {
+                let response_status = response.status().as_u16();
+                let headers = AnonymizedHttpHeaders::from(response.headers());
+                println!("{fqdn} {ip} {url} {response_status} {headers}");
+                if let Some(recon_pg_pool) = &pg_pool {
+                    submit_http_recon_results(
+                        recon_pg_pool,
+                        &fqdn,
+                        &url,
+                        response_status,
+                        Some(&headers),
+                    )
+                    .await?;
+                }
+            }
+            Err(e) => {
+                debug!("Error when sending a request to '{}': {}", &url, e);
+                if let Some(recon_pg_pool) = &pg_pool {
+                    submit_http_recon_results(recon_pg_pool, &fqdn, &url, 0, None).await?;
+                }
+            }
         }
     }
 
-    let http_request = client
-        .head(format!("http://{ip}"))
-        .header(reqwest::header::HOST, fqdn.to_string())
-        .build()?;
+    if query_known_results || !skip_https_recon {
+        let url = Url::parse(&format!("https://{ip}"))?;
+        let request = client
+            .head(url.clone())
+            .header(reqwest::header::HOST, fqdn.to_string())
+            .build()?;
 
-    if let Ok(http_response) = client.execute(http_request).await {
-        let request_url = http_response.url();
-        let response_status = http_response.status().as_u16();
-        let headers = AnonymizedHttpHeaders::from(http_response.headers());
-        println!("{fqdn} {ip} {request_url} {response_status} {headers}",);
-
-        if let Some(recon_pg_pool) = &pg_pool {
-            submit_http_recon_results(recon_pg_pool, &fqdn, request_url, response_status, &headers)
-                .await?;
+        match client.execute(request).await {
+            Ok(response) => {
+                let response_status = response.status().as_u16();
+                let headers = AnonymizedHttpHeaders::from(response.headers());
+                println!("{fqdn} {ip} {url} {response_status} {headers}");
+                if let Some(recon_pg_pool) = &pg_pool {
+                    submit_https_recon_results(
+                        recon_pg_pool,
+                        &fqdn,
+                        &url,
+                        response_status,
+                        Some(&headers),
+                    )
+                    .await?;
+                }
+            }
+            Err(e) => {
+                debug!("Error when sending a request to '{}': {}", &url, e);
+                if let Some(recon_pg_pool) = &pg_pool {
+                    submit_https_recon_results(recon_pg_pool, &fqdn, &url, 0, None).await?;
+                }
+            }
         }
     }
-
-    Ok(())
-}
-
-#[tracing::instrument]
-async fn recon_https(
-    pg_pool: Option<Arc<PgPool>>,
-    client: Arc<ClientWithMiddleware>,
-    fqdn: Arc<Fqdn>,
-    ip: Arc<IpAddr>,
-    query_known_results: bool,
-) -> anyhow::Result<()> {
-    if let Some(recon_pg_pool) = &pg_pool {
-        if !query_known_results && is_https_recon_result_in_db(recon_pg_pool, &fqdn).await {
-            return Ok(());
-        }
-    }
-
-    let https_request = client
-        .head(format!("https://{ip}"))
-        .header(reqwest::header::HOST, fqdn.to_string())
-        .build()?;
-
-    if let Ok(https_response) = client.execute(https_request).await {
-        let request_url = https_response.url();
-        let response_status = https_response.status().as_u16();
-        let headers = AnonymizedHttpHeaders::from(https_response.headers());
-        println!("{fqdn} {ip} {request_url} {response_status} {headers}",);
-
-        if let Some(recon_pg_pool) = &pg_pool {
-            submit_https_recon_results(
-                recon_pg_pool,
-                &fqdn,
-                request_url,
-                response_status,
-                &headers,
-            )
-            .await?;
-        }
-    }
-
     Ok(())
 }
 
@@ -389,30 +398,20 @@ async fn main() -> anyhow::Result<()> {
         })
         .flat_map_unordered(None, |(fqdn, ip_addr)| {
             Box::pin(
-                join(
-                    recon_http(
-                        recon_pg_pool.clone(),
-                        client.clone(),
-                        fqdn.clone(),
-                        ip_addr.clone(),
-                        query_known_results,
-                    ),
-                    recon_https(
-                        recon_pg_pool.clone(),
-                        client.clone(),
-                        fqdn.clone(),
-                        ip_addr.clone(),
-                        query_known_results,
-                    ),
+                recon_http(
+                    recon_pg_pool.clone(),
+                    client.clone(),
+                    fqdn.clone(),
+                    ip_addr.clone(),
+                    query_known_results,
                 )
                 .into_stream(),
             )
         }));
 
     debug!("Starting HTTP(s) recon");
-    while let Some((http, https)) = data_stream.next().await {
-        http?;
-        https?;
+    while let Some(http_recon_result) = data_stream.next().await {
+        http_recon_result?;
     }
 
     Ok(())

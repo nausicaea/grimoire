@@ -49,6 +49,17 @@ impl Fqdn {
     }
 }
 
+impl<'a> From<&'a hickory_resolver::Name> for Fqdn {
+    fn from(name: &'a hickory_resolver::Name) -> Self {
+        let components = name
+            .iter()
+            .map(|lbl| String::from_utf8_lossy(lbl).to_string())
+            .collect();
+
+        Fqdn(components)
+    }
+}
+
 impl FromStr for Fqdn {
     type Err = ParseFqdnError;
 
