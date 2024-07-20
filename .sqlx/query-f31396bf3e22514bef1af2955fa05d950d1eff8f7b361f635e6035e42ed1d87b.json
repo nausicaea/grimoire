@@ -1,12 +1,12 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT COUNT(*) FROM \"dns-recon\" WHERE \"fqdn\" = $1",
+  "query": "SELECT EXISTS (SELECT 1 FROM \"dns-recon\" WHERE fqdn = $1)",
   "describe": {
     "columns": [
       {
         "ordinal": 0,
-        "name": "count",
-        "type_info": "Int8"
+        "name": "exists",
+        "type_info": "Bool"
       }
     ],
     "parameters": {
@@ -18,5 +18,5 @@
       null
     ]
   },
-  "hash": "943bfbc6f9d624a1caea767b097bde6c6fe6f4d02549401da675c48046c5099b"
+  "hash": "f31396bf3e22514bef1af2955fa05d950d1eff8f7b361f635e6035e42ed1d87b"
 }

@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "INSERT INTO \"https-recon\" VALUES (DEFAULT, $1, $2, $3, $4, $5)",
+  "query": "INSERT INTO \"http-recon\" (id, fqdn, url, \"response-status\", headers, domain) VALUES (DEFAULT, $1, $2, $3, $4, $5)",
   "describe": {
     "columns": [],
     "parameters": {
@@ -14,5 +14,5 @@
     },
     "nullable": []
   },
-  "hash": "ada920ffdb30972cdb9799f930ff60ae84399ad3472f51c1c0754244f36172bd"
+  "hash": "a57031d4ffc8cc994039f50aa5b965f75587d3570d981e8dd4fc05902702a6f4"
 }

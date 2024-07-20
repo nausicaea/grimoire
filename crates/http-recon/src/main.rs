@@ -42,11 +42,11 @@ struct Args {
     recon_db_database: String,
     /// If enabled, store the results in the recon database
     #[arg(short, long)]
-    store_results: bool,
+    enable_db_storage: bool,
     /// If enabled, run queries again even if the result is known. Ignored when results are not
     /// stored in the recon database
     #[arg(long)]
-    query_known_results: bool,
+    query_known_fqdns: bool,
     /// Optionally proxy the HTTP(s) requests
     #[arg(short, long, env = "PROXY")]
     proxy: Option<String>,
@@ -70,6 +70,9 @@ struct Args {
     /// When connecting to HTTPS services, accept invalid certificates
     #[arg(short, long, default_value_t = true)]
     accept_invalid_certs: bool,
+    /// Disable output to stdout
+    #[arg(short, long)]
+    quiet: bool,
 }
 
 #[derive(Debug, Default)]
@@ -78,8 +81,8 @@ struct CountPair {
     https_count: Option<i64>,
 }
 
-#[tracing::instrument]
-async fn is_http_recon_result_in_db(pg_pool: &PgPool, fqdn: &Fqdn) -> (bool, bool) {
+#[tracing::instrument(skip(pg_pool))]
+async fn is_fqdn_in_http_recon_db(pg_pool: &PgPool, fqdn: &Fqdn) -> (bool, bool) {
     let counts = query_as!(
         CountPair,
         r#"
@@ -99,7 +102,7 @@ async fn is_http_recon_result_in_db(pg_pool: &PgPool, fqdn: &Fqdn) -> (bool, boo
     )
 }
 
-#[tracing::instrument]
+#[tracing::instrument(skip(pg_pool, headers))]
 async fn submit_http_recon_results(
     pg_pool: &PgPool,
     fqdn: &Fqdn,
@@ -122,7 +125,7 @@ async fn submit_http_recon_results(
     }
 
     query!(
-        r#"INSERT INTO "http-recon" VALUES (DEFAULT, $1, $2, $3, $4, $5)"#,
+        r#"INSERT INTO "http-recon" (id, fqdn, url, "response-status", headers, domain) VALUES (DEFAULT, $1, $2, $3, $4, $5)"#,
         fqdn.to_string(),
         url.to_string(),
         response_status as i32,
@@ -137,7 +140,7 @@ async fn submit_http_recon_results(
     Ok(())
 }
 
-#[tracing::instrument]
+#[tracing::instrument(skip(pg_pool, headers))]
 async fn submit_https_recon_results(
     pg_pool: &PgPool,
     fqdn: &Fqdn,
@@ -160,7 +163,7 @@ async fn submit_https_recon_results(
     }
 
     query!(
-        r#"INSERT INTO "https-recon" VALUES (DEFAULT, $1, $2, $3, $4, $5)"#,
+        r#"INSERT INTO "https-recon" (id, fqdn, url, "response-status", headers, domain) VALUES (DEFAULT, $1, $2, $3, $4, $5)"#,
         fqdn.to_string(),
         url.to_string(),
         response_status as i32,
@@ -175,21 +178,22 @@ async fn submit_https_recon_results(
     Ok(())
 }
 
-#[tracing::instrument]
+#[tracing::instrument(skip(pg_pool, client))]
 async fn recon_http(
     pg_pool: Option<Arc<PgPool>>,
     client: Arc<ClientWithMiddleware>,
     fqdn: Arc<Fqdn>,
     ip: Arc<IpAddr>,
-    query_known_results: bool,
+    query_known_fqdns: bool,
+    quiet: bool,
 ) -> anyhow::Result<()> {
     let (skip_http_recon, skip_https_recon) = if let Some(recon_pg_pool) = &pg_pool {
-        is_http_recon_result_in_db(recon_pg_pool, &fqdn).await
+        is_fqdn_in_http_recon_db(recon_pg_pool, &fqdn).await
     } else {
         (false, false)
     };
 
-    if query_known_results || !skip_http_recon {
+    if query_known_fqdns || !skip_http_recon {
         let url = Url::parse(&format!("http://{ip}"))?;
         let request = client
             .head(url.clone())
@@ -200,7 +204,11 @@ async fn recon_http(
             Ok(response) => {
                 let response_status = response.status().as_u16();
                 let headers = AnonymizedHttpHeaders::from(response.headers());
-                println!("{fqdn} {ip} {url} {response_status} {headers}");
+
+                if !quiet {
+                    println!("{fqdn} {ip} {url} {response_status} {headers}");
+                }
+
                 if let Some(recon_pg_pool) = &pg_pool {
                     submit_http_recon_results(
                         recon_pg_pool,
@@ -221,7 +229,7 @@ async fn recon_http(
         }
     }
 
-    if query_known_results || !skip_https_recon {
+    if query_known_fqdns || !skip_https_recon {
         let url = Url::parse(&format!("https://{ip}"))?;
         let request = client
             .head(url.clone())
@@ -232,7 +240,11 @@ async fn recon_http(
             Ok(response) => {
                 let response_status = response.status().as_u16();
                 let headers = AnonymizedHttpHeaders::from(response.headers());
-                println!("{fqdn} {ip} {url} {response_status} {headers}");
+
+                if !quiet {
+                    println!("{fqdn} {ip} {url} {response_status} {headers}");
+                }
+
                 if let Some(recon_pg_pool) = &pg_pool {
                     submit_https_recon_results(
                         recon_pg_pool,
@@ -260,6 +272,7 @@ async fn recon_http(
 struct AnonymizedHttpHeaders(HashMap<String, Vec<String>>);
 
 impl<'a> From<&'a HeaderMap> for AnonymizedHttpHeaders {
+    #[tracing::instrument(skip_all)]
     fn from(value: &'a HeaderMap) -> Self {
         let mut map = HashMap::default();
         let groups = value.iter().chunk_by(|(header, _)| *header);
@@ -287,6 +300,7 @@ impl<'a> From<&'a HeaderMap> for AnonymizedHttpHeaders {
 }
 
 impl Display for AnonymizedHttpHeaders {
+    #[tracing::instrument(skip_all)]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut output_buf = [0_u8; MAX_HEADER_BUFFER_SIZE];
         let map_str = serde_json::to_string(&self).map_err(|e| {
@@ -337,7 +351,7 @@ async fn main() -> anyhow::Result<()> {
     debug!("Parsing command line arguments");
     let args = Args::parse();
 
-    let recon_pg_pool = if args.store_results {
+    let recon_pg_pool = if args.enable_db_storage {
         debug!("Establishing a connection to the recon database");
         Some(Arc::new(
             create_recon_db_pool(
@@ -381,7 +395,7 @@ async fn main() -> anyhow::Result<()> {
 
     debug!("Creating a stream from Stdin, decoded as lines, and parsed as pairs FQDNs and IPs");
     info!("Lines that don't parse as pairs of FQDN and IP address are silently ignored");
-    let query_known_results = args.query_known_results;
+    let query_known_fqdns = args.query_known_fqdns;
     let mut data_stream = pin!(FramedRead::new(stdin(), LinesCodec::new())
         .filter_map(|line_result| async move { line_result.map_err(|e| warn!("{e}")).ok() })
         .filter_map(|line| async move {
@@ -403,7 +417,8 @@ async fn main() -> anyhow::Result<()> {
                     client.clone(),
                     fqdn.clone(),
                     ip_addr.clone(),
-                    query_known_results,
+                    query_known_fqdns,
+                    args.quiet,
                 )
                 .into_stream(),
             )

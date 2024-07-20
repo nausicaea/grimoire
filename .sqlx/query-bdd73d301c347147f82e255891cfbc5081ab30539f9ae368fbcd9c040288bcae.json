@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO \"dns-recon\" (id, fqdn, ips, domain) \n        VALUES (DEFAULT, $1, $2, $3)\n        ON CONFLICT ON CONSTRAINT \"dns-recon_pkey\" DO \n        UPDATE SET ips = (SELECT ARRAY(SELECT DISTINCT UNNEST(\"dns-recon\".ips || EXCLUDED.ips)))\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Varchar",
+        "InetArray",
+        "Varchar"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "bdd73d301c347147f82e255891cfbc5081ab30539f9ae368fbcd9c040288bcae"
+}

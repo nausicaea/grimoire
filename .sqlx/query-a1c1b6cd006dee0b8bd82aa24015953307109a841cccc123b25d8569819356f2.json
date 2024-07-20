@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO \"cert-recon\" (id, domain, \"cert-name\") \n        VALUES (DEFAULT, $1, $2)\n        ON CONFLICT ON CONSTRAINT \"cert-recon_pkey\" DO NOTHING\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Varchar",
+        "Varchar"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "a1c1b6cd006dee0b8bd82aa24015953307109a841cccc123b25d8569819356f2"
+}
