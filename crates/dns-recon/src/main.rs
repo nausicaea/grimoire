@@ -1,4 +1,4 @@
-use anyhow::anyhow;
+use anyhow::{anyhow, Context};
 use itertools::Itertools;
 use sqlx::{query, query_scalar, types::ipnetwork::IpNetwork, PgPool};
 use std::{
@@ -18,7 +18,7 @@ use hickory_resolver::{
     AsyncResolver,
 };
 use tokio_util::codec::{FramedRead, LinesCodec};
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 use tracing_subscriber::EnvFilter;
 
 /// Performs mass DNS resolution using the selected DNS server
@@ -91,10 +91,7 @@ async fn submit_dns_recon_results(
     )
     .execute(pg_pool)
     .await
-    .map_err(|e| {
-        error!("'{fqdn}': {}", e);
-        e
-    })?;
+    .with_context(|| format!("Relating to FQDN '{fqdn}'"))?;
 
     Ok(())
 }
@@ -175,37 +172,47 @@ async fn main() -> anyhow::Result<()> {
                 .ok()
         })
         .filter(|fqdn| skip_known_fqdn(recon_pg_pool.clone(), fqdn.clone(), query_known_fqdns))
-        .flat_map(|fqdn| Box::pin(resolver.lookup_ip(format!("{}.", fqdn)).into_stream())));
+        .flat_map_unordered(None, |fqdn| Box::pin(
+            resolver.lookup_ip(format!("{}.", fqdn)).into_stream()
+        ))
+        .flat_map_unordered(None, |lookup_result| Box::pin(
+            async {
+                match lookup_result {
+                    Err(e) => match e.kind() {
+                        ResolveErrorKind::NoRecordsFound { query, .. } => {
+                            let fqdn = Fqdn::from(query.name());
 
-    debug!("Performing the DNS query for the input");
-    while let Some(lookup_result) = data_stream.next().await {
-        match lookup_result {
-            Ok(lookup_ip) => {
-                let fqdn = Fqdn::from(lookup_ip.query().name());
-                let ips: Vec<_> = lookup_ip.iter().collect();
+                            debug!("Error resolving the FQDN '{}': {}", &fqdn, e);
+                            if let Some(recon_pg_pool) = recon_pg_pool.clone() {
+                                submit_dns_recon_results(&recon_pg_pool, &fqdn, &[]).await?;
+                            }
 
-                if !args.quiet {
-                    println!("{} {}", &fqdn, ips.iter().join(" "));
-                }
+                            Ok(())
+                        }
+                        _ => Err(anyhow::Error::from(e)),
+                    },
+                    Ok(lookup_ip) => {
+                        let fqdn = Fqdn::from(lookup_ip.query().name());
+                        let ips: Vec<_> = lookup_ip.iter().collect();
 
-                if let Some(recon_pg_pool) = &recon_pg_pool {
-                    submit_dns_recon_results(recon_pg_pool, &fqdn, &ips).await?;
-                }
-            }
-            Err(e) => match e.kind() {
-                ResolveErrorKind::NoRecordsFound { query, .. } => {
-                    let fqdn = Fqdn::from(query.name());
+                        if !args.quiet {
+                            println!("{} {}", &fqdn, ips.iter().join(" "));
+                        }
 
-                    debug!("Error resolving the FQDN '{}': {}", &fqdn, e);
-                    if let Some(recon_pg_pool) = &recon_pg_pool {
-                        submit_dns_recon_results(recon_pg_pool, &fqdn, &[]).await?;
+                        if let Some(recon_pg_pool) = recon_pg_pool.clone() {
+                            submit_dns_recon_results(&recon_pg_pool, &fqdn, &ips).await?;
+                        }
+
+                        Ok(())
                     }
                 }
-                _ => {
-                    return Err(e.into());
-                }
-            },
-        }
+            }
+            .into_stream()
+        )));
+
+    info!("Starting DNS recon");
+    while let Some(dns_recon_result) = data_stream.next().await {
+        dns_recon_result?;
     }
 
     Ok(())

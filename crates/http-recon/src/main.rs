@@ -424,7 +424,7 @@ async fn main() -> anyhow::Result<()> {
             )
         }));
 
-    debug!("Starting HTTP(s) recon");
+    info!("Starting HTTP(s) recon");
     while let Some(http_recon_result) = data_stream.next().await {
         http_recon_result?;
     }
