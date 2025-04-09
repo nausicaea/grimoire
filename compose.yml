@@ -42,12 +42,14 @@ services:
     build:
       context: .
       args:
-        ARCH: aarch64-unknown-linux-musl
+        ARCH: $ARCH
         PACKAGE: cert-recon
         AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
         AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
         SCCACHE_BUCKET: ${SCCACHE_BUCKET}
         SCCACHE_ENDPOINT: ${SCCACHE_ENDPOINT}
+        SCCACHE_VERSION: $SCCACHE_VERSION
+        SCCACHE_CHECKSUM: $SCCACHE_CHECKSUM
     environment:
       RECON_DB_HOST: postgres
       RECON_DB_PASSWORD: $RECON_DB_PASSWORD
@@ -60,12 +62,14 @@ services:
     build:
       context: .
       args:
-        ARCH: aarch64-unknown-linux-musl
+        ARCH: $ARCH
         PACKAGE: dns-recon
         AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
         AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
         SCCACHE_BUCKET: ${SCCACHE_BUCKET}
         SCCACHE_ENDPOINT: ${SCCACHE_ENDPOINT}
+        SCCACHE_VERSION: $SCCACHE_VERSION
+        SCCACHE_CHECKSUM: $SCCACHE_CHECKSUM
     environment:
       DNS_SERVER: tor-internal.docker
       RECON_DB_HOST: postgres
@@ -79,12 +83,14 @@ services:
     build:
       context: .
       args:
-        ARCH: aarch64-unknown-linux-musl
+        ARCH: $ARCH
         PACKAGE: http-recon
         AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
         AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
         SCCACHE_BUCKET: ${SCCACHE_BUCKET}
         SCCACHE_ENDPOINT: ${SCCACHE_ENDPOINT}
+        SCCACHE_VERSION: $SCCACHE_VERSION
+        SCCACHE_CHECKSUM: $SCCACHE_CHECKSUM
     environment:
       PROXY: socks5h://tor-internal.docker:9050/
       RECON_DB_HOST: postgres
