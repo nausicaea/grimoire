@@ -1877,13 +1877,15 @@ dependencies = [
 
 [[package]]
 name = "serde_json"
-version = "1.0.120"
+version = "1.0.150"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4e0d21c9a8cae1235ad58a00c11cb40d4b1e5c784f1ef2c537876ed6ffd8b7c5"
+checksum = "e8014e44b4736ed0538adeecded0fce2a272f22dc9578a7eb6b2d9993c74cfb9"
 dependencies = [
  "itoa",
- "ryu",
+ "memchr",
  "serde",
+ "serde_core",
+ "zmij",
 ]
 
 [[package]]
@@ -2949,3 +2951,9 @@ name = "zeroize"
 version = "1.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ced3678a2879b30306d323f4542626697a464a97c0a07c9aebf7ebca65cd4dde"
+
+[[package]]
+name = "zmij"
+version = "1.0.23"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "29666d0abbfad1e3dc4dcf6144730dd3a3ab225bbbdac83319345b1b44ccfc1b"
