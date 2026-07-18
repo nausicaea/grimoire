@@ -4,6 +4,9 @@ members = [
   "crates/*",
 ]
 
+[workspace.dependencies]
+grimoire = { path = "crates/grimoire" }
+
 [profile.release]
 panic = "abort"
 

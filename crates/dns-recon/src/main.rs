@@ -13,9 +13,9 @@ use clap::Parser;
 use futures::{FutureExt, StreamExt};
 use grimoire::{create_recon_db_pool, Fqdn, IpAddrOrFqdn};
 use hickory_resolver::{
-    config::{Protocol, ResolverConfig, ResolverOpts},
-    error::ResolveErrorKind,
-    AsyncResolver,
+    config::{ResolverConfig, ResolverOpts, ServerGroup},
+    net::runtime::TokioRuntimeProvider,
+    Resolver, TokioResolver,
 };
 use tokio_util::codec::{FramedRead, LinesCodec};
 use tracing::{debug, info, warn};
@@ -133,32 +133,43 @@ async fn main() -> anyhow::Result<()> {
         None
     };
 
-    let dns_server = match &args.dns_server {
-        IpAddrOrFqdn::IpAddr(dns_addr) => *dns_addr,
+    debug!("Creating the system resolver");
+    let resolver = TokioResolver::builder_tokio()?.build()?;
+
+    let (dns_fqdn, dns_server) = match &args.dns_server {
+        IpAddrOrFqdn::IpAddr(dns_addr) => {
+            let fqdn = resolver
+                .reverse_lookup(*dns_addr)
+                .await?
+                .answers()
+                .iter()
+                .next()
+                .map(|r| r.name.clone())
+                .ok_or_else(|| anyhow!("no FQDN found for {}", dns_addr))?;
+            (fqdn.into(), *dns_addr)
+        }
         IpAddrOrFqdn::Fqdn(dns_fqdn) => {
             debug!("Resolving the DNS server IP address");
-            let resolver = AsyncResolver::tokio_from_system_conf()?;
-            resolver
+            let ips = resolver
                 .lookup_ip(format!("{}.", &dns_fqdn))
                 .await?
                 .iter()
                 .next()
-                .ok_or_else(|| anyhow!("no IP address found for {}", &dns_fqdn))?
+                .ok_or_else(|| anyhow!("no IP address found for {}", &dns_fqdn))?;
+            (dns_fqdn.clone(), ips)
         }
     };
 
-    debug!("Creating the resolver configuration");
-    let mut resolver_config = ResolverConfig::new();
-    resolver_config.add_name_server(hickory_resolver::config::NameServerConfig {
-        socket_addr: SocketAddr::new(dns_server, args.dns_port),
-        protocol: Protocol::Udp,
-        tls_dns_name: None,
-        trust_negative_responses: false,
-        bind_addr: None,
+    let resolver_config = ResolverConfig::udp_and_tcp(&ServerGroup {
+        ips: &[dns_server],
+        server_name: &dns_fqdn.to_string(),
+        path: "/dns-query",
     });
 
-    debug!("Creating the resolver");
-    let resolver = AsyncResolver::tokio(resolver_config, ResolverOpts::default());
+    debug!("Creating the specific resolver");
+    let resolver =
+        TokioResolver::builder_with_config(resolver_config, TokioRuntimeProvider::default())
+            .build()?;
 
     debug!("Creating a stream from Stdin, decoded as lines, and parsed as FQDNs");
     info!("Lines that don't parse as FQDNs are silently ignored");
@@ -178,19 +189,22 @@ async fn main() -> anyhow::Result<()> {
         .flat_map_unordered(None, |lookup_result| Box::pin(
             async {
                 match lookup_result {
-                    Err(e) => match e.kind() {
-                        ResolveErrorKind::NoRecordsFound { query, .. } => {
+                    Err(hickory_resolver::net::NetError::Dns(dns_err)) => match dns_err {
+                        hickory_resolver::net::DnsError::NoRecordsFound(
+                            hickory_resolver::net::NoRecords { ref query, .. },
+                        ) => {
                             let fqdn = Fqdn::from(query.name());
 
-                            debug!("Error resolving the FQDN '{}': {}", &fqdn, e);
+                            debug!("Error resolving the FQDN '{}': {}", &fqdn, dns_err);
                             if let Some(recon_pg_pool) = recon_pg_pool.clone() {
                                 submit_dns_recon_results(&recon_pg_pool, &fqdn, &[]).await?;
                             }
 
                             Ok(())
                         }
-                        _ => Err(anyhow::Error::from(e)),
+                        _ => Err(anyhow::Error::from(dns_err)),
                     },
+                    Err(net_err) => Err(anyhow::Error::from(net_err)),
                     Ok(lookup_ip) => {
                         let fqdn = Fqdn::from(lookup_ip.query().name());
                         let ips: Vec<_> = lookup_ip.iter().collect();
