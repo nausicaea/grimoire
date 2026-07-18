@@ -12,7 +12,7 @@ futures = "0.3.30"
 grimoire = { path = "../grimoire" }
 itertools = "0.15.0"
 reqwest = { version = "0.12.5", features = ["socks"] }
-reqwest-middleware = "0.3.2"
+reqwest-middleware = "0.5.0"
 reqwest-ratelimit = "0.2.0"
 reqwest-leaky-bucket = "0.2.0"
 serde = { version = "1.0.204", features = ["derive"] }
