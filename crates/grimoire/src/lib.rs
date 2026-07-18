@@ -5,6 +5,7 @@ use std::{
     sync::OnceLock,
 };
 
+use hickory_resolver::proto::rr::Name;
 use regex::Regex;
 use sqlx::{
     migrate::Migrator,
@@ -49,14 +50,20 @@ impl Fqdn {
     }
 }
 
-impl<'a> From<&'a hickory_resolver::Name> for Fqdn {
-    fn from(name: &'a hickory_resolver::Name) -> Self {
+impl<'a> From<&'a Name> for Fqdn {
+    fn from(name: &'a Name) -> Self {
         let components = name
             .iter()
             .map(|lbl| String::from_utf8_lossy(lbl).to_string())
             .collect();
 
         Fqdn(components)
+    }
+}
+
+impl From<Name> for Fqdn {
+    fn from(name: Name) -> Self {
+        From::from(&name)
     }
 }
 

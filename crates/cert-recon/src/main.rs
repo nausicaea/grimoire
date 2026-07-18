@@ -105,22 +105,21 @@ async fn main() -> anyhow::Result<()> {
         .max_connections(1)
         .connect_lazy_with(ct_pg_connect_opts);
 
-    debug!("Creating the SQL query for Certwatch");
     let domain = args.domain.to_string();
-    let raw_query = format!(
+
+    debug!("Fetching SQL query results");
+    let mut data_stream = sqlx::query!(
         r#"
         SELECT DISTINCT cai.NAME_VALUE
         FROM certificate_and_identities AS cai
         WHERE
-            plainto_tsquery('certwatch', '{0}') @@ identities(cai.certificate)
+            plainto_tsquery('certwatch', '$1') @@ identities(cai.certificate)
             AND (cai.NAME_TYPE = '2.5.4.3' OR cai.NAME_TYPE LIKE 'san:%')
-            AND cai.NAME_VALUE LIKE '%.{0}'
+            AND cai.NAME_VALUE LIKE '%.$1'
     "#,
         &domain
-    );
-
-    debug!("Fetching SQL query results");
-    let mut data_stream = raw_sql(&raw_query).fetch(&ct_pg_pool);
+    )
+    .fetch(&ct_pg_pool);
 
     debug!("Evaluating SQL query results");
     while let Some(data) = data_stream.next().await {
