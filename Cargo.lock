@@ -928,8 +928,8 @@ dependencies = [
  "itertools",
  "reqwest 0.12.5",
  "reqwest-leaky-bucket",
- "reqwest-middleware 0.5.2",
- "reqwest-ratelimit 0.2.0",
+ "reqwest-middleware",
+ "reqwest-ratelimit",
  "serde",
  "serde_json",
  "sqlx",
@@ -1878,22 +1878,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2b6bf0cbd135d86ab7e9e0b71b946890d42ae6cb4e7f7e2728ae13f6ffdad6f6"
 dependencies = [
  "leaky-bucket",
- "reqwest-ratelimit 0.5.0",
-]
-
-[[package]]
-name = "reqwest-middleware"
-version = "0.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "39346a33ddfe6be00cbc17a34ce996818b97b230b87229f10114693becca1268"
-dependencies = [
- "anyhow",
- "async-trait",
- "http",
- "reqwest 0.12.5",
- "serde",
- "thiserror 1.0.69",
- "tower-service",
+ "reqwest-ratelimit",
 ]
 
 [[package]]
@@ -1912,18 +1897,6 @@ dependencies = [
 
 [[package]]
 name = "reqwest-ratelimit"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f2c673125eda7cae1344f1cfa6ca20afab39cd86a3ec57b949bec1c580eb8c87"
-dependencies = [
- "async-trait",
- "http",
- "reqwest 0.12.5",
- "reqwest-middleware 0.3.2",
-]
-
-[[package]]
-name = "reqwest-ratelimit"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9dcdd7bc47db7ba0b18b58ebbfba6449c266d0334175eaf5e2219ac4c3a047df"
@@ -1931,7 +1904,7 @@ dependencies = [
  "async-trait",
  "http",
  "reqwest 0.13.4",
- "reqwest-middleware 0.5.2",
+ "reqwest-middleware",
 ]
 
 [[package]]
