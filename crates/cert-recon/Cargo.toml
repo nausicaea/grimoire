@@ -8,7 +8,7 @@ edition = "2021"
 anyhow = "1.0.86"
 clap = { version = "4.5.9", features = ["derive", "env"] }
 futures = "0.3.30"
-sqlx = { version = "0.7.4", features = ["runtime-tokio", "postgres", "tls-rustls"] }
+sqlx = { version = "0.9.0", features = ["runtime-tokio", "postgres", "tls-rustls"] }
 tokio = { version = "1.38.0", features = ["macros", "rt-multi-thread"] }
 grimoire = { path = "../grimoire" }
 tracing = "0.1.40"
