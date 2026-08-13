@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM docker.io/clux/muslrust:1.97.0-stable AS build
+FROM docker.io/clux/muslrust:1.97.0-stable@sha256:a5c8c8792f48cbd616db8bc2143ba021a2a8e3a3b4f246c99b5e9ec445a0cecd AS build
 ARG ARCH
 ARG PACKAGE
 ARG AWS_ACCESS_KEY_ID
@@ -35,7 +35,7 @@ COPY .sqlx ./.sqlx
 RUN cargo fetch --target ${ARCH}
 RUN cargo build -p ${PACKAGE} --release --target ${ARCH}
 
-FROM docker.io/library/alpine:latest
+FROM docker.io/library/alpine:latest@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
 ARG ARCH
 ARG PACKAGE
 COPY --from=build /src/target/$ARCH/release/${PACKAGE} /bin/docker-entrypoint
