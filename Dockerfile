@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1
+# syntax=docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32
 
 FROM docker.io/clux/muslrust:1.97.0-stable@sha256:a5c8c8792f48cbd616db8bc2143ba021a2a8e3a3b4f246c99b5e9ec445a0cecd AS build
 ARG ARCH
