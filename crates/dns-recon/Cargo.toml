@@ -7,7 +7,7 @@ edition = "2021"
 [dependencies]
 anyhow = "=1.0.104"
 clap = { version = "=4.6.6", features = ["derive", "env"] }
-futures = "=0.3.33"
+futures = "=0.3.34"
 grimoire = { path = "../grimoire" }
 hickory-resolver = "=0.26.1"
 itertools = "=0.15.0"

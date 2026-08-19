@@ -8,7 +8,7 @@ anyhow = "=1.0.104"
 base64ct = "=1.8.3"
 clap = { version = "=4.6.6", features = ["derive", "env"] }
 cookie = "=0.18.2"
-futures = "=0.3.33"
+futures = "=0.3.34"
 grimoire = { path = "../grimoire" }
 itertools = "=0.15.0"
 reqwest = { version = "=0.13.4", features = ["socks"] }
