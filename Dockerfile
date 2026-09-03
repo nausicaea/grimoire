@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM docker.io/clux/muslrust:1.97.0-stable@sha256:a5c8c8792f48cbd616db8bc2143ba021a2a8e3a3b4f246c99b5e9ec445a0cecd AS build
+FROM docker.io/clux/muslrust:1.97.1-stable@sha256:e05165ef545e95372db6a7681574010667c8832c535db5501d8f865e216f1133 AS build
 ARG ARCH
 ARG PACKAGE
 ARG AWS_ACCESS_KEY_ID
